@@ -18,7 +18,7 @@ Inside this repo, the shared extraction boundary now lives under `packages/`:
 
 The hosted product keeps:
 
-- Every auth and session flows
+- hosted product auth and session flows
 - hosted product branding and growth work
 - product-specific agent UX and orchestration layers
 

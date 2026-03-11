@@ -59,17 +59,17 @@ test('append creates section when missing', () => {
 });
 
 test('append matches numbered heading labels without duplicating section', () => {
-  const input = '# Daily\n\n## 4. Every x Claws Strategy\n\n- existing\n\n## Next\n\n- more\n';
+  const input = '# Daily\n\n## 4. Agent Collaboration Strategy\n\n- existing\n\n## Next\n\n- more\n';
   const result = applyAgentEditOperations(input, [
-    { op: 'append', section: 'Every x Claws Strategy', content: 'New strategy note' },
+    { op: 'append', section: 'Agent Collaboration Strategy', content: 'New strategy note' },
   ], { by: 'ai:r2c2' });
   assert(result.ok, 'Expected ok');
   assert(
-    countOccurrences(result.markdown, '## 4. Every x Claws Strategy') === 1,
+    countOccurrences(result.markdown, '## 4. Agent Collaboration Strategy') === 1,
     'Expected numbered target heading to remain single',
   );
   assert(
-    countOccurrences(result.markdown, '## Every x Claws Strategy') === 0,
+    countOccurrences(result.markdown, '## Agent Collaboration Strategy') === 0,
     'Expected no unnumbered duplicate heading',
   );
   assertIncludes(result.markdown, 'New strategy note', 'Expected appended content to be present');

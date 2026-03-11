@@ -61,7 +61,7 @@ const WEDNESDAY_TASK_CLUSTER = [
   '',
   '* [x] Review Jack\'s intro for my piece for this week',
   '',
-  '**EveryClaw Review** - one consolidated session with R2C2',
+  '**Proof Review** - one consolidated session with R2C2',
 ].join('\n');
 
 const WEDNESDAY_BROKEN_SECTION = [
@@ -101,7 +101,7 @@ const WEDNESDAY_CLEAN_SECTION = [
   '',
   '* [ ] Write Claw guide, bring Jack in',
   '',
-  '**EveryClaw Review** - one consolidated session with R2C2',
+  '**Proof Review** - one consolidated session with R2C2',
 ].join('\n');
 
 const DOC_PREFIX = [

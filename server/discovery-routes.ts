@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { resolveShareMarkdownAuthMode } from './every-auth.js';
+import { resolveShareMarkdownAuthMode } from './hosted-auth.js';
 import {
   AGENT_DOCS_PATH,
   ALT_SHARE_TOKEN_HEADER_FORMAT,
@@ -80,9 +80,9 @@ discoveryRoutes.get('/.well-known/agent.json', (req: Request, res: Response) => 
     ? ['none']
     : authMode === 'api_key'
       ? ['api_key']
-      : authMode === 'every_or_api_key'
-        ? ['api_key', 'every_oauth']
-        : ['every_oauth'];
+      : authMode === 'oauth_or_api_key'
+        ? ['api_key', 'oauth']
+        : ['oauth'];
 
   res.setHeader('Cache-Control', 'public, max-age=300');
   res.json({

@@ -23,7 +23,7 @@ async function run(): Promise<void> {
   try {
     (globalThis as { window?: unknown }).window = {
       location: {
-        origin: 'https://www.proofeditor.ai',
+        origin: 'https://www.proof.com',
         pathname: '/d/test-slug',
         search: '?token=query-token',
       },

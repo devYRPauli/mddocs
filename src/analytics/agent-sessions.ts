@@ -1,5 +1,5 @@
 import type { AgentSession, AgentSessionStatus } from '../agent/session-manager';
-import { captureEvent } from './posthog';
+import { captureEvent } from './telemetry';
 
 const lastStatusBySessionId = new Map<string, AgentSessionStatus>();
 

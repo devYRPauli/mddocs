@@ -2875,8 +2875,8 @@ export interface DashboardDocumentRow {
   copy_url?: string;
 }
 
-export function listUserOwnedDocuments(everyUserId: number, limit: number = 50): DashboardDocumentRow[] {
-  const asStr = String(everyUserId);
+export function listUserOwnedDocuments(oauthUserId: number, limit: number = 50): DashboardDocumentRow[] {
+  const asStr = String(oauthUserId);
   return getDb().prepare(`
     SELECT slug, title, share_state, updated_at, created_at
     FROM documents
@@ -2884,11 +2884,11 @@ export function listUserOwnedDocuments(everyUserId: number, limit: number = 50):
       AND deleted_at IS NULL
     ORDER BY updated_at DESC
     LIMIT ?
-  `).all(asStr, `every:${asStr}`, `every_user:${asStr}`, limit) as DashboardDocumentRow[];
+  `).all(asStr, `oauth:${asStr}`, `oauth_user:${asStr}`, limit) as DashboardDocumentRow[];
 }
 
-export function listSharedWithMeDocuments(everyUserId: number, limit: number = 50): DashboardDocumentRow[] {
-  const asStr = String(everyUserId);
+export function listSharedWithMeDocuments(oauthUserId: number, limit: number = 50): DashboardDocumentRow[] {
+  const asStr = String(oauthUserId);
   return getDb().prepare(`
     SELECT d.slug, d.title, d.share_state, d.updated_at, d.created_at, v.last_visited_at
     FROM user_document_visits v
@@ -2899,11 +2899,11 @@ export function listSharedWithMeDocuments(everyUserId: number, limit: number = 5
       AND (d.owner_id IS NULL OR (d.owner_id != ? AND d.owner_id != ? AND d.owner_id != ?))
     ORDER BY v.last_visited_at DESC
     LIMIT ?
-  `).all(everyUserId, asStr, `every:${asStr}`, `every_user:${asStr}`, limit) as DashboardDocumentRow[];
+  `).all(oauthUserId, asStr, `oauth:${asStr}`, `oauth_user:${asStr}`, limit) as DashboardDocumentRow[];
 }
 
-export function listRecentlyOpenedDocuments(everyUserId: number, limit: number = 50): DashboardDocumentRow[] {
-  const asStr = String(everyUserId);
+export function listRecentlyOpenedDocuments(oauthUserId: number, limit: number = 50): DashboardDocumentRow[] {
+  const asStr = String(oauthUserId);
   return getDb().prepare(`
     SELECT d.slug, d.title, d.share_state, d.updated_at, d.created_at, v.last_visited_at,
       CASE
@@ -2917,11 +2917,11 @@ export function listRecentlyOpenedDocuments(everyUserId: number, limit: number =
       AND d.share_state != 'DELETED'
     ORDER BY v.last_visited_at DESC
     LIMIT ?
-  `).all(asStr, `every:${asStr}`, `every_user:${asStr}`, everyUserId, limit) as DashboardDocumentRow[];
+  `).all(asStr, `oauth:${asStr}`, `oauth_user:${asStr}`, oauthUserId, limit) as DashboardDocumentRow[];
 }
 
-export function listDashboardDocuments(everyUserId: number, limit: number = 100): DashboardDocumentRow[] {
-  const asStr = String(everyUserId);
+export function listDashboardDocuments(oauthUserId: number, limit: number = 100): DashboardDocumentRow[] {
+  const asStr = String(oauthUserId);
   return getDb().prepare(`
     SELECT slug, title, share_state, updated_at, created_at, last_visited_at, is_owned
     FROM (
@@ -2960,12 +2960,12 @@ export function listDashboardDocuments(everyUserId: number, limit: number = 100)
     LIMIT ?
   `).all(
     asStr,
-    `every:${asStr}`,
-    `every_user:${asStr}`,
-    everyUserId,
+    `oauth:${asStr}`,
+    `oauth_user:${asStr}`,
+    oauthUserId,
     asStr,
-    `every:${asStr}`,
-    `every_user:${asStr}`,
+    `oauth:${asStr}`,
+    `oauth_user:${asStr}`,
     limit,
   ) as DashboardDocumentRow[];
 }

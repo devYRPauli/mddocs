@@ -298,7 +298,7 @@ function renderAgentFriendlyHtml(
 </head>
 <body>
   <h1>Proof Shared Document</h1>
-  <p>This is a collaborative document on <a href="https://www.proofeditor.ai">Proof</a>.</p>
+  <p>This is a collaborative document in Proof.</p>
 
   <h2>Document Content</h2>
   <pre>${escapeHtml(markdown)}</pre>

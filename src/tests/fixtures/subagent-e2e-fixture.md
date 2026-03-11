@@ -1,7 +1,7 @@
 Hed: openai has some catching up to do
 Dek: why this matters for builders
 
-## the metric that doesn't fit on a dashboard
+## the metric that doesn't fit on a spreadsheet
 
 At one point, the AI asked me point blank: why are you asking this? what is it you're hoping to hear?
 
@@ -22,7 +22,7 @@ She said "hi".
 We have less people than before.
 
 The start-up used e-mail for the sign-up flow.
-Every company has their own onboarding.
+Each company has their own onboarding.
 The team's roadmap lost it's potential.
 
 We worked on research & development and/or marketing.

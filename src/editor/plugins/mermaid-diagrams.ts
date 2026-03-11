@@ -70,7 +70,7 @@ export function renderProofMermaidSvg(source: string): string {
 function isShareDocumentPage(): boolean {
   if (typeof window === 'undefined') return false;
   const path = window.location.pathname;
-  return path.startsWith('/d/') || path === '/library' || path.startsWith('/library/');
+  return path.startsWith('/d/');
 }
 
 function sanitizeSvg(svgMarkup: string): SVGSVGElement | null {

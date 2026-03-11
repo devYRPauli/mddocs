@@ -15,6 +15,7 @@ import {
   enforceApiClientCompatibility,
   enforceBridgeClientCompatibility,
 } from './client-capabilities.js';
+import { getBuildInfo } from './build-info.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -103,8 +104,10 @@ async function main(): Promise<void> {
   });
 
   app.get('/health', (_req, res) => {
+    const buildInfo = getBuildInfo();
     res.json({
       ok: true,
+      buildInfo,
       collab: getCollabRuntime(),
     });
   });

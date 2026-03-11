@@ -9,10 +9,10 @@ import {
   type ProposedRange,
 } from '../proposals';
 import {
-  EVERY_STYLE_GUIDE,
-  EVERY_STYLE_GUIDE_CHAR_COUNT,
-  EVERY_STYLE_GUIDE_VERSION,
-} from '../skills/every-style-guide';
+  EDITORIAL_STYLE_GUIDE,
+  EDITORIAL_STYLE_GUIDE_CHAR_COUNT,
+  EDITORIAL_STYLE_GUIDE_VERSION,
+} from '../skills/editorial-style-guide';
 
 export interface BridgeMarkRange {
   from: number;
@@ -90,12 +90,12 @@ const SUGGESTION_ENDPOINTS = {
 const SUGGESTION_KINDS = new Set<string>(['insert', 'delete', 'replace']);
 const REGEX_NO_MATCH_BUDGET_MAX = 3;
 const REGEX_SEARCH_CALLS_WITHOUT_NEW_MATCHES_MAX = 8;
-const EVERY_STYLE_SEARCH_CALLS_MAX_DEFAULT = 12;
-const EVERY_STYLE_READ_DOCUMENT_CHAR_CAP = 60_000;
+const STYLE_REVIEW_SEARCH_CALLS_MAX_DEFAULT = 12;
+const STYLE_REVIEW_READ_DOCUMENT_CHAR_CAP = 60_000;
 
 // Keep per-focus caps modest and aligned with each focus area's listed searches.
 // The goal is to limit search thrash without blocking recall when matches exist.
-const EVERY_STYLE_SEARCH_CALLS_MAX_BY_FOCUS: Record<string, number> = {
+const STYLE_REVIEW_SEARCH_CALLS_MAX_BY_FOCUS: Record<string, number> = {
   abbreviations: 4,
   bylines: 4,
   capitalization: 4,
@@ -106,7 +106,7 @@ const EVERY_STYLE_SEARCH_CALLS_MAX_BY_FOCUS: Record<string, number> = {
   usage: 6,
 };
 
-const EVERY_STYLE_SCOPE_TRIGGERS: Record<string, { patterns: RegExp[]; labels: string[] }> = {
+const STYLE_REVIEW_SCOPE_TRIGGERS: Record<string, { patterns: RegExp[]; labels: string[] }> = {
   abbreviations: {
     patterns: [/\b[A-Z]{2,}\b/],
     labels: ['uppercase acronym (e.g., USAAF)'],
@@ -227,7 +227,7 @@ function sanitizeHeadlinesQuote(
   return { quote: nextQuote, adjusted, reason };
 }
 
-function enforceEveryStyleScope(
+function enforceStyleReviewScope(
   quote: string,
   focusAreaId?: string,
   recentSearchMatchTexts?: Set<string>,
@@ -257,7 +257,7 @@ function enforceEveryStyleScope(
       warning: 'Headlines scope: quote not anchored to Hed:/Dek:, recent search match, or standalone blank-line-surrounded line.',
     };
   }
-  const config = EVERY_STYLE_SCOPE_TRIGGERS[focusAreaId];
+  const config = STYLE_REVIEW_SCOPE_TRIGGERS[focusAreaId];
   if (!config) return null;
   if (config.patterns.some((pattern) => pattern.test(quote))) {
     return null;
@@ -963,8 +963,8 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
     documentContent,
     onToolEvent,
   } = options;
-  const isEveryStyleAgent = agentId.includes('every-style')
-    || actor.includes('every-style')
+  const isStyleReviewAgent = agentId.includes('style-review')
+    || actor.includes('style-review')
     || agentId.includes('demo-day')
     || actor.includes('demo-day');
   const resolvedFocusAreaId = typeof focusAreaId === 'string' ? focusAreaId.trim() : '';
@@ -977,8 +977,8 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
     }
     return resolvedFocusAreaId;
   })();
-  const everyStyleSearchCallsMax = isEveryStyleAgent
-    ? (baseFocusAreaId ? (EVERY_STYLE_SEARCH_CALLS_MAX_BY_FOCUS[baseFocusAreaId] ?? EVERY_STYLE_SEARCH_CALLS_MAX_DEFAULT) : EVERY_STYLE_SEARCH_CALLS_MAX_DEFAULT)
+  const styleReviewSearchCallsMax = isStyleReviewAgent
+    ? (baseFocusAreaId ? (STYLE_REVIEW_SEARCH_CALLS_MAX_BY_FOCUS[baseFocusAreaId] ?? STYLE_REVIEW_SEARCH_CALLS_MAX_DEFAULT) : STYLE_REVIEW_SEARCH_CALLS_MAX_DEFAULT)
     : null;
   const hasRunId = typeof runId === 'string' && runId.trim().length > 0;
   const singleWriterEnabled = singleWriter === true;
@@ -1046,7 +1046,7 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
     searchCallBudgetExhausted: boolean;
   } {
     const noProgressBudgetExhausted = regexSearchCallsSinceNewMatches >= REGEX_SEARCH_CALLS_WITHOUT_NEW_MATCHES_MAX;
-    const searchCallBudgetExhausted = everyStyleSearchCallsMax !== null && searchCallsUsed >= everyStyleSearchCallsMax;
+    const searchCallBudgetExhausted = styleReviewSearchCallsMax !== null && searchCallsUsed >= styleReviewSearchCallsMax;
     return {
       exhausted: regexNoMatchBudgetExhausted || noProgressBudgetExhausted || searchCallBudgetExhausted,
       noProgressBudgetExhausted,
@@ -1071,7 +1071,7 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
     newMatchCount: number | null;
   } {
     const { exhausted, noProgressBudgetExhausted, searchCallBudgetExhausted } = isRegexBudgetExhausted();
-    const searchCallsMax = everyStyleSearchCallsMax;
+    const searchCallsMax = styleReviewSearchCallsMax;
     const searchCallsRemaining = searchCallsMax === null ? null : Math.max(0, searchCallsMax - searchCallsUsed);
     const exhaustedReason = exhausted
       ? (regexNoMatchBudgetExhausted
@@ -1098,7 +1098,7 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
 
   function buildRegexBudgetMessage(): string {
     const { exhausted, noProgressBudgetExhausted, searchCallBudgetExhausted } = isRegexBudgetExhausted();
-    const searchCallsMax = everyStyleSearchCallsMax ?? EVERY_STYLE_SEARCH_CALLS_MAX_DEFAULT;
+    const searchCallsMax = styleReviewSearchCallsMax ?? STYLE_REVIEW_SEARCH_CALLS_MAX_DEFAULT;
     if (exhausted) {
       if (regexNoMatchBudgetExhausted) {
         return 'Regex no-match search budget exhausted. Stop regex searching until you get new matches.';
@@ -1114,9 +1114,9 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
       0,
       REGEX_SEARCH_CALLS_WITHOUT_NEW_MATCHES_MAX - regexSearchCallsSinceNewMatches
     );
-    const searchCallsRemaining = everyStyleSearchCallsMax === null
+    const searchCallsRemaining = styleReviewSearchCallsMax === null
       ? null
-      : Math.max(0, everyStyleSearchCallsMax - searchCallsUsed);
+      : Math.max(0, styleReviewSearchCallsMax - searchCallsUsed);
     if (
       regexNoMatchBudgetRemaining <= 1
       || noProgressRemaining <= 2
@@ -1292,8 +1292,8 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
           cachedDocumentContent = content || resolvedPlain;
           hasFetchedState = true;
 
-          if (isEveryStyleAgent && content.length > EVERY_STYLE_READ_DOCUMENT_CHAR_CAP) {
-            const truncatedContent = content.slice(0, EVERY_STYLE_READ_DOCUMENT_CHAR_CAP);
+          if (isStyleReviewAgent && content.length > STYLE_REVIEW_READ_DOCUMENT_CHAR_CAP) {
+            const truncatedContent = content.slice(0, STYLE_REVIEW_READ_DOCUMENT_CHAR_CAP);
             cachedDocumentContent = truncatedContent;
             cachedDocumentTruncated = true;
             return {
@@ -1302,8 +1302,8 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
               documentPath,
               truncated: true,
               totalLength: content.length,
-              cap: EVERY_STYLE_READ_DOCUMENT_CHAR_CAP,
-              message: `Document truncated to ${EVERY_STYLE_READ_DOCUMENT_CHAR_CAP} characters for efficiency. Use search() to scan the full document.`,
+              cap: STYLE_REVIEW_READ_DOCUMENT_CHAR_CAP,
+              message: `Document truncated to ${STYLE_REVIEW_READ_DOCUMENT_CHAR_CAP} characters for efficiency. Use search() to scan the full document.`,
             };
           }
 
@@ -1318,20 +1318,20 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
         }
       },
     },
-    ...(isEveryStyleAgent
+    ...(isStyleReviewAgent
       ? [
           {
             name: 'read_style_guide',
-            description: 'Read the full Every style guide. Use it as the source of truth for rules.',
+            description: 'Read the editorial style guide. Use it as the source of truth for rules.',
             inputSchema: {
               type: 'object',
               properties: {},
             },
             handler: async () => ({
               success: true,
-              version: EVERY_STYLE_GUIDE_VERSION,
-              charCount: EVERY_STYLE_GUIDE_CHAR_COUNT,
-              content: EVERY_STYLE_GUIDE,
+              version: EDITORIAL_STYLE_GUIDE_VERSION,
+              charCount: EDITORIAL_STYLE_GUIDE_CHAR_COUNT,
+              content: EDITORIAL_STYLE_GUIDE,
             }),
           } satisfies AgentTool,
         ]
@@ -1374,16 +1374,16 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
 
           const type = args.type === 'regex'
             ? 'regex'
-            : (isEveryStyleAgent ? 'regex' : 'text');
+            : (isStyleReviewAgent ? 'regex' : 'text');
           let resetReason: string | null = null;
           let newMatchCount: number | null = null;
 
-          if (everyStyleSearchCallsMax !== null && searchCallsUsed >= everyStyleSearchCallsMax) {
+          if (styleReviewSearchCallsMax !== null && searchCallsUsed >= styleReviewSearchCallsMax) {
             return {
               success: false,
               count: 0,
               matches: [],
-              error: `No matches budget exhausted: search call budget exhausted (${searchCallsUsed}/${everyStyleSearchCallsMax}).`,
+              error: `No matches budget exhausted: search call budget exhausted (${searchCallsUsed}/${styleReviewSearchCallsMax}).`,
               budget: buildRegexBudgetPayload(resetReason),
               budgetMessage: buildRegexBudgetMessage(),
             };
@@ -1393,7 +1393,7 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
             const { exhausted, noProgressBudgetExhausted, searchCallBudgetExhausted } = isRegexBudgetExhausted();
             if (exhausted) {
               const exhaustedReasonMessage = searchCallBudgetExhausted
-                ? `search call budget exhausted (${searchCallsUsed}/${everyStyleSearchCallsMax ?? EVERY_STYLE_SEARCH_CALLS_MAX_DEFAULT})`
+                ? `search call budget exhausted (${searchCallsUsed}/${styleReviewSearchCallsMax ?? STYLE_REVIEW_SEARCH_CALLS_MAX_DEFAULT})`
                 : (noProgressBudgetExhausted
                     ? `regex no-progress budget exhausted after ${REGEX_SEARCH_CALLS_WITHOUT_NEW_MATCHES_MAX} searches without new matches`
                     : `0/${REGEX_NO_MATCH_BUDGET_MAX} regex no-match searches remaining`);
@@ -1446,7 +1446,7 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
           const matches = summarizeSearchMatches(response.matches);
           const count = typeof response.count === 'number' ? response.count : matches.length;
           const noMatches = count <= 0 || matches.length === 0;
-          if (isEveryStyleAgent && matches.length > 0) {
+          if (isStyleReviewAgent && matches.length > 0) {
             if (recentSearchMatchTexts.size > 200) {
               recentSearchMatchTexts.clear();
             }
@@ -1488,7 +1488,7 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
               const exhaustedPayload = buildRegexBudgetPayload(resetReason);
               exhaustedPayload.newMatchCount = newMatchCount;
               const exhaustedReasonMessage = searchCallBudgetExhausted
-                ? `search call budget exhausted (${searchCallsUsed}/${everyStyleSearchCallsMax ?? EVERY_STYLE_SEARCH_CALLS_MAX_DEFAULT})`
+                ? `search call budget exhausted (${searchCallsUsed}/${styleReviewSearchCallsMax ?? STYLE_REVIEW_SEARCH_CALLS_MAX_DEFAULT})`
                 : (noProgressBudgetExhausted
                     ? `regex no-progress budget exhausted after ${REGEX_SEARCH_CALLS_WITHOUT_NEW_MATCHES_MAX} searches without new matches`
                     : `0/${REGEX_NO_MATCH_BUDGET_MAX} regex no-match searches remaining`);
@@ -1576,7 +1576,7 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
       };
     };
 
-    if (isEveryStyleAgent) {
+    if (isStyleReviewAgent) {
       tools.push({
         name: 'list_candidates',
         description: 'List structural candidates (e.g., headline lines) with stable candidateId and ranges. Use this before proposing structural markdown edits.',
@@ -1688,13 +1688,13 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
           const requestedRange = normalizeRange(args.range);
           const structuralFocusArea = isStructuralFocusArea(baseFocusAreaId);
           let documentForScope: string | null = null;
-          if (isEveryStyleAgent) {
+          if (isStyleReviewAgent) {
             documentForScope = cachedDocumentContent;
             if (cachedDocumentTruncated) {
               const snapshot = await ensureDocumentSnapshot();
               documentForScope = snapshot?.markdown ?? documentForScope;
             }
-            const scope = enforceEveryStyleScope(
+            const scope = enforceStyleReviewScope(
               quoteForProposal,
               baseFocusAreaId,
               recentSearchMatchTexts,
@@ -1733,7 +1733,7 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
             }
 
             const suggestionType = suggestionTypeRaw as keyof typeof SUGGESTION_ENDPOINTS;
-            if (isEveryStyleAgent && baseFocusAreaId === 'headlines' && suggestionType === 'delete') {
+            if (isStyleReviewAgent && baseFocusAreaId === 'headlines' && suggestionType === 'delete') {
               return {
                 success: false,
                 error: 'Delete suggestions are not allowed for headlines. Propose a replace with proper heading markdown instead.',
@@ -1745,7 +1745,7 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
               return { success: false, error: 'content is required for insert and replace suggestions' };
             }
 
-            if (isEveryStyleAgent && baseFocusAreaId === 'italics') {
+            if (isStyleReviewAgent && baseFocusAreaId === 'italics') {
               if (suggestionType !== 'replace') {
                 return {
                   success: false,
@@ -1784,7 +1784,7 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
               }
             }
 
-            if (isEveryStyleAgent && baseFocusAreaId === 'quotation-marks') {
+            if (isStyleReviewAgent && baseFocusAreaId === 'quotation-marks') {
               if (suggestionType !== 'replace') {
                 return {
                   success: false,
@@ -1923,7 +1923,7 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
               }
             }
 
-            if (isEveryStyleAgent && baseFocusAreaId === 'headlines') {
+            if (isStyleReviewAgent && baseFocusAreaId === 'headlines') {
               const sanitized = sanitizeHeadlinesQuote(quoteForProposal, contentRaw, cachedDocumentContent);
               if (sanitized.adjusted) {
                 quoteForProposal = sanitized.quote;
@@ -1931,7 +1931,7 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
               }
             }
 
-            if (isEveryStyleAgent && baseFocusAreaId === 'lists') {
+            if (isStyleReviewAgent && baseFocusAreaId === 'lists') {
               if (!candidateIdRaw) {
                 return {
                   success: false,
@@ -2008,7 +2008,7 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
           }
           if (
             structuralCandidate
-            && isEveryStyleAgent
+            && isStyleReviewAgent
             && baseFocusAreaId === 'headlines'
             && change.kind === 'suggestion'
             && change.suggestionType === 'replace'
@@ -2256,7 +2256,7 @@ export function getHttpBridgeTools(options: HttpBridgeToolsOptions): AgentTool[]
       }
     );
 
-    if (isEveryStyleAgent) {
+    if (isStyleReviewAgent) {
       return tools.filter((tool) => tool.name !== 'create_suggestion' && tool.name !== 'add_comment');
     }
     return tools;

@@ -2454,7 +2454,7 @@ async function persistDoc(
     const deltaUpdate = priorVector
       ? Y.encodeStateAsUpdate(ydoc, priorVector)
       : Y.encodeStateAsUpdate(ydoc);
-    const compactionEvery = parsePositiveInt(
+    const compactionInterval = parsePositiveInt(
       process.env.COLLAB_COMPACTION_EVERY,
       DEFAULT_COLLAB_COMPACTION_EVERY,
     );
@@ -2533,7 +2533,7 @@ async function persistDoc(
       if (deltaUpdate.byteLength > 0) {
         const seq = appendYUpdate(slug, deltaUpdate, sourceActor);
         nextUpdateCount = priorUpdateCount + 1;
-        if (nextUpdateCount >= compactionEvery) {
+        if (nextUpdateCount >= compactionInterval) {
           const fullSnapshot = Y.encodeStateAsUpdate(ydoc);
           saveYSnapshot(slug, seq, fullSnapshot);
           nextUpdateCount = 0;

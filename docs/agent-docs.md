@@ -311,7 +311,7 @@ Ack processed events (editor/owner):
 
 ## Archived Desktop Workflow
 
-This repo is web-first. If you explicitly need the deprecated desktop-native workflow, use the separate `every-proof-native` repo and treat it as an exception path.
+This repo is web-first. Desktop-native workflows are outside the public SDK scope and should be treated as separate implementation work.
 
 ## Projection Guardrails And QA
 

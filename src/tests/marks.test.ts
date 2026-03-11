@@ -3883,10 +3883,10 @@ function makeProposal(change: SubAgentProposal['change'], suffix: string): SubAg
 const proposalDocument = [
   'Hello world',
   'Here is a medium-length sentence that should not be rewritten into a large block.',
-  'Every way I sliced it',
+  'Any way I sliced it',
   'point blank',
   '*Italic caption.*',
-  'Step one of my revolutionary AI analysis: Manually exporting data from Every\'s CMS into Google Sheets',
+  'Step one of my analysis: Manually exporting data from the CMS into Google Sheets',
   '## The receipts I\'d never had',
   '## I Asked AI the Question I Could Never Ask My Boss',
   'The exchange where ChatGPT gave me the answer I was craving: yes, you are good at your job.',
@@ -3938,8 +3938,8 @@ test('dedupeProposals rejects over-scoped replacements that change the opening w
       {
         kind: 'suggestion',
         suggestionType: 'replace',
-        quote: "of my revolutionary AI analysis: Manually exporting data from Every's CMS into Google Sheets",
-        content: "Step one of my revolutionary AI analysis: manually exporting data from Every's CMS into Google Sheets",
+        quote: 'of my analysis: Manually exporting data from the CMS into Google Sheets',
+        content: 'Step one of my analysis: manually exporting data from the CMS into Google Sheets',
       },
       'prefix-mismatch'
     ),
@@ -3995,8 +3995,8 @@ test('dedupeProposals rejects case-lowering at sentence start', () => {
       {
         kind: 'suggestion',
         suggestionType: 'replace',
-        quote: 'Every way I sliced it',
-        content: 'every way I sliced it',
+        quote: 'Any way I sliced it',
+        content: 'any way I sliced it',
       },
       'case-lower'
     ),

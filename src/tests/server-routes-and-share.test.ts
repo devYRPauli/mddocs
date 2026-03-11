@@ -279,7 +279,7 @@ async function withEphemeralApiServer(run: (baseUrl: string) => Promise<void>): 
   }
 }
 
-async function withMockEveryOAuth(run: (oauthBaseUrl: string) => Promise<void>): Promise<void> {
+async function withMockOAuth(run: (oauthBaseUrl: string) => Promise<void>): Promise<void> {
   const app = express();
   app.use(express.urlencoded({ extended: false }));
   app.use(express.json());
@@ -395,17 +395,13 @@ async function runServerSourceTests(): Promise<void> {
     );
   });
 
-  await test('D1: landing template only shows pointer cursor on the actual Every stamp link', async () => {
+  await test('D1: landing template removes the hosted footer stamp art', async () => {
     assertIncludes(
       homeTemplate,
       '.showcase {\n    width: 100%;\n    max-width: 1300px;\n    height: 780px;\n    position: relative;\n    border-radius: 4px;\n    overflow: hidden;\n    background-image: linear-gradient(90deg, rgba(38, 37, 30, 0.05) 0%, rgba(38, 37, 30, 0.05) 100%), linear-gradient(90deg, #f5f3ec 0%, #f5f3ec 100%);\n    cursor: default;',
       'showcase wrapper should not advertise clickability',
     );
-    assertIncludes(
-      homeTemplate,
-      '.made-by-stamp {\n    position: absolute;\n    bottom: 23.38px;\n    right: 22px;\n    width: 107px;\n    height: 79.65px;\n    display: flex;\n    align-items: center;\n    justify-content: center;\n    transition: transform 0.3s ease;\n    z-index: 10;\n    cursor: pointer;',
-      'the clickable Every stamp should keep a pointer cursor',
-    );
+    assert(!homeTemplate.includes('/assets/every-logo.svg'), 'landing template should not reference hosted-product branding assets');
   });
 }
 
@@ -424,7 +420,7 @@ async function runServerHookTests(): Promise<void> {
     const body = response.body || '';
     assertIncludes(body, 'Proof — Agent Setup', 'agent-setup should include heading text');
     assertIncludes(body, 'Web-first Quickstart', 'agent-setup should include web-first quickstart instructions');
-    assertIncludes(body, 'every-proof-native', 'agent-setup should point legacy desktop users to the split native repo');
+    assert(!/native split repo/i.test(body), 'agent-setup should stay focused on the web SDK setup flow');
   });
 
   await test('D1: /codex-agent-setup redirects to the unified setup guide', async () => {
@@ -440,7 +436,7 @@ async function runServerHookTests(): Promise<void> {
     assert(response.status === 200, `/install-hooks.sh should return 200, got ${response.status}`);
     const body = response.body || '';
     assertIncludes(body, '#!/bin/bash', 'install script should be a bash script');
-    assertIncludes(body, 'Downloaded hooks from proofeditor.ai', 'install script should fetch hosted hook resources');
+    assertIncludes(body, 'Downloaded hooks from', 'install script should fetch hook resources from the configured base URL');
     assertIncludes(body, 'settings.json', 'install script should mention settings.json wiring');
   });
 
@@ -485,8 +481,8 @@ async function runServerHookTests(): Promise<void> {
     const body = response.body || '';
     assertIncludes(
       body,
-      'curl -fsSL https://www.proofeditor.ai/proof.SKILL.md',
-      'Unified skill install command should fail fast on HTTP errors',
+      'http://localhost:4000/agent-setup',
+      'agent-setup should point at the local SDK setup endpoint',
     );
     assertIncludes(
       body,
@@ -517,8 +513,8 @@ async function runServerHookTests(): Promise<void> {
     );
     assertIncludes(
       body,
-      'mkdir -p ~/.codex/skills/proof && curl -fsSL https://www.proofeditor.ai/proof.SKILL.md -o ~/.codex/skills/proof/SKILL.md',
-      'landing page Codex copy prompt should include unified skill install',
+      'PROOF_BASE_URL="${PROOF_BASE_URL:-http://localhost:4000}"',
+      'landing page should include a configurable local Proof SDK base URL',
     );
     assertIncludes(
       body,
@@ -1018,7 +1014,7 @@ async function runRoutePayloadValidationTests(): Promise<void> {
 
     await test('D2: long OG titles shrink to preserve description space', async () => {
       const shortLayout = resolveOgTextLayout('Monday Product Sync');
-      const longLayout = resolveOgTextLayout('How We Want the Every Bundle to Feel When Someone First Realizes It Can Actually Do Computer Errands Across the Entire Writing Stack Including Review, Rewrite, Comments, Provenance, and Collaboration');
+      const longLayout = resolveOgTextLayout('How We Want the Proof SDK Bundle to Feel When Someone First Realizes It Can Actually Do Computer Errands Across the Entire Writing Stack Including Review, Rewrite, Comments, Provenance, and Collaboration');
       assert(longLayout.titleFontSize < shortLayout.titleFontSize, 'Expected long titles to use a smaller OG title size');
       assert(longLayout.excerptMaxLength < shortLayout.excerptMaxLength, 'Expected long titles to reserve more room for the description/footer');
       assert(longLayout.contentGap !== shortLayout.contentGap, 'Expected long titles to tighten title/description spacing');
@@ -1350,7 +1346,7 @@ async function runRoutePayloadValidationTests(): Promise<void> {
       assertEqual(payload.title, 'Paused owner title update', 'Expected updated paused title');
     });
 
-    await test('D2: open-context does not reject bare links when bearer token is an Every-style session token', async () => {
+    await test('D2: open-context does not reject bare links when bearer token is an OAuth-style session token', async () => {
       const response = await get(baseUrl, `/api/documents/${slug}/open-context`, {
         Authorization: 'Bearer epsess_mock_session_token',
       });
@@ -1409,13 +1405,13 @@ async function runRoutePayloadValidationTests(): Promise<void> {
         const response = await get(baseUrl, `/api/documents/${slug}/collab-session`, {
           'x-share-token': accessToken,
           'x-forwarded-proto': 'https',
-          'x-forwarded-host': 'www.proofeditor.ai',
+          'x-forwarded-host': 'www.proof.com',
         });
         assert(response.status === 200, `Expected status 200, got ${response.status}`);
         const payload = await response.json();
         if (payload?.session) {
           const collabWsUrl = String(payload?.session?.collabWsUrl ?? '');
-          assert(collabWsUrl.startsWith('wss://www.proofeditor.ai'), `Expected forwarded collab ws URL, got ${collabWsUrl}`);
+          assert(collabWsUrl.startsWith('wss://www.proof.com'), `Expected forwarded collab ws URL, got ${collabWsUrl}`);
           assert(!collabWsUrl.includes('localhost'), `Expected forwarded collab ws URL without localhost, got ${collabWsUrl}`);
         } else {
           assert(payload?.collabAvailable === false, 'Expected collabAvailable=false when collab-session lacks session');

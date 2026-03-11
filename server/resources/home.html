@@ -739,13 +739,6 @@
     <div class="border-overlay"></div>
     <img src="/assets/screenshot.jpg" class="screenshot" alt="Proof Editor Interface">
     
-    <a href="https://every.to/" target="_blank" rel="noopener noreferrer" class="made-by-stamp" style="text-decoration: none;">
-      <img src="/assets/stamp-bg.svg" class="stamp-bg" alt="Stamp background">
-      <div class="stamp-content">
-        <p>MADE BY</p>
-        <img src="/assets/every-logo.svg" alt="Every Logo">
-      </div>
-    </a>
   </div>
 
   <div class="how-it-works">
@@ -764,7 +757,7 @@
       <div class="step-card">
         <div class="border"></div>
         <h3 class="step-title">3. Collaborate</h3>
-        <p class="step-desc">Agents suggest edits and leave comments. You accept, reject, or reply. Every character tracks who wrote it.</p>
+        <p class="step-desc">Agents suggest edits and leave comments. You accept, reject, or reply. Each character tracks who wrote it.</p>
       </div>
     </div>
   </div>
@@ -806,16 +799,18 @@
             <button class="copy-btn" onclick="copyCode('code-any-agent')">Copy</button>
 <pre># Quick start: click "Get started" above, then paste the doc URL into your agent.
 
+export PROOF_BASE_URL="${PROOF_BASE_URL:-http://localhost:4000}"
+
 # Optional: install the Proof skill (if your agent supports skills)
-# Skill URL: https://www.proofeditor.ai/proof.SKILL.md
+# Skill URL: $PROOF_BASE_URL/proof.SKILL.md
 # Claude Code:
-#   mkdir -p ~/.claude/skills/proof && curl -fsSL https://www.proofeditor.ai/proof.SKILL.md -o ~/.claude/skills/proof/SKILL.md
+#   mkdir -p ~/.claude/skills/proof && curl -fsSL "$PROOF_BASE_URL/proof.SKILL.md" -o ~/.claude/skills/proof/SKILL.md
 # Codex:
-#   mkdir -p ~/.codex/skills/proof && curl -fsSL https://www.proofeditor.ai/proof.SKILL.md -o ~/.codex/skills/proof/SKILL.md
+#   mkdir -p ~/.codex/skills/proof && curl -fsSL "$PROOF_BASE_URL/proof.SKILL.md" -o ~/.codex/skills/proof/SKILL.md
 
 # 1. Create a document (returns slug + token)
 
-curl -sS -X POST https://www.proofeditor.ai/documents \
+curl -sS -X POST "$PROOF_BASE_URL/documents" \
  -H "Content-Type: application/json" \
  -d '{"title":"My Doc","markdown":"# Hello\n\nFirst draft."}'
 
@@ -825,11 +820,11 @@ curl -sS -X POST https://www.proofeditor.ai/documents \
 # 2. Read it back
 
 curl -H "Accept: application/json" \
-  "https://www.proofeditor.ai/d/&lt;slug&gt;?token=&lt;token&gt;"
+  "$PROOF_BASE_URL/d/&lt;slug&gt;?token=&lt;token&gt;"
 
 # 3. Suggest an edit (human accepts or rejects)
 
-curl -sS -X POST https://www.proofeditor.ai/documents/&lt;slug&gt;/ops \
+curl -sS -X POST "$PROOF_BASE_URL/documents/&lt;slug&gt;/ops" \
  -H "Content-Type: application/json" \
  -H "Authorization: Bearer &lt;token&gt;" \
  -d '{"type":"suggestion.add","kind":"replace","quote":"First draft.","content":"First draft, revised.","by":"ai:my-agent"}'
@@ -841,7 +836,7 @@ curl -sS -X POST https://www.proofeditor.ai/documents/&lt;slug&gt;/ops \
         <div id="tab-claude-code" class="panel-content">
           <div id="code-claude-code" class="code-shell">
             <button class="copy-btn" onclick="copyCode('code-claude-code')">Copy</button>
-<pre>Read https://www.proofeditor.ai/agent-setup and follow ALL the instructions to install the Proof skill and configure yourself for persistent collaboration. Ask me before making config changes.</pre>
+<pre>Read http://localhost:4000/agent-setup and follow all the instructions to install the Proof skill and configure yourself for persistent collaboration. Ask me before making config changes.</pre>
           </div>
         <div class="ca-footer-text" style="margin-top: 10px;">Installs the Proof skill, sets up collaboration instructions, and keeps the hosted Proof and Proof SDK workflows aligned.</div>
         </div>
@@ -849,7 +844,7 @@ curl -sS -X POST https://www.proofeditor.ai/documents/&lt;slug&gt;/ops \
         <div id="tab-codex" class="panel-content">
           <div id="code-codex" class="code-shell">
             <button class="copy-btn" onclick="copyCode('code-codex')">Copy</button>
-<pre>Read https://www.proofeditor.ai/codex-agent-setup and follow ALL the instructions to install the Proof skill and configure yourself for persistent collaboration, including Proof SDK-style document creation via POST /documents. Ask me before making config changes.</pre>
+<pre>Read http://localhost:4000/codex-agent-setup and follow all the instructions to install the Proof skill and configure yourself for persistent collaboration, including Proof SDK-style document creation via POST /documents. Ask me before making config changes.</pre>
           </div>
         <div class="ca-footer-text" style="margin-top: 10px;">Installs the Proof skill and saves collaboration instructions to ~/.codex/AGENTS.md, including the neutral `/documents` and `/documents/:slug/bridge/*` workflow.</div>
         </div>
@@ -857,7 +852,7 @@ curl -sS -X POST https://www.proofeditor.ai/documents/&lt;slug&gt;/ops \
         <div id="tab-cursor" class="panel-content">
           <div id="code-cursor" class="code-shell">
             <button class="copy-btn" onclick="copyCode('code-cursor')">Copy</button>
-<pre>Read https://www.proofeditor.ai/agent-setup and follow ALL the instructions to install the Proof skill and configure yourself for persistent collaboration. Ask me before making config changes.</pre>
+<pre>Read http://localhost:4000/agent-setup and follow all the instructions to install the Proof skill and configure yourself for persistent collaboration. Ask me before making config changes.</pre>
           </div>
         <div class="ca-footer-text" style="margin-top: 10px;">Installs the Proof skill, sets up collaboration rules, and points you at the hosted Proof plus reusable Proof SDK routes.</div>
         </div>
@@ -865,7 +860,7 @@ curl -sS -X POST https://www.proofeditor.ai/documents/&lt;slug&gt;/ops \
         <div id="tab-windsurf" class="panel-content">
           <div id="code-windsurf" class="code-shell">
             <button class="copy-btn" onclick="copyCode('code-windsurf')">Copy</button>
-<pre>Read https://www.proofeditor.ai/agent-setup and follow ALL the instructions to install the Proof skill and configure yourself for persistent collaboration. Ask me before making config changes.</pre>
+<pre>Read http://localhost:4000/agent-setup and follow all the instructions to install the Proof skill and configure yourself for persistent collaboration. Ask me before making config changes.</pre>
           </div>
         <div class="ca-footer-text" style="margin-top: 10px;">Installs the Proof skill and sets up collaboration rules so Cascade can use the hosted product or the reusable Proof SDK bridge routes.</div>
         </div>
@@ -876,13 +871,7 @@ curl -sS -X POST https://www.proofeditor.ai/documents/&lt;slug&gt;/ops \
   <div class="bottom-cta">
     <h2>Ready to try it?</h2>
     <a href="/get-started" class="btn-primary">Get started</a>
-    <a href="https://every.to/" target="_blank" rel="noopener noreferrer" class="made-by-stamp-bottom">
-      <img src="/assets/stamp-bg.svg" class="stamp-bg" alt="Stamp background">
-      <div class="stamp-content">
-        <p>MADE BY</p>
-        <img src="/assets/every-logo.svg" alt="Every Logo">
-      </div>
-    </a>
+    <p class="ca-footer-text" style="margin-top: 18px;">Hosted Proof is available at <a href="https://proof.com">proof.com</a>.</p>
   </div>
 </div>
 
@@ -1003,10 +992,6 @@ curl -sS -X POST https://www.proofeditor.ai/documents/&lt;slug&gt;/ops \
     initializeAnimatedLogo();
   }
 })();
-</script>
-<script>
-!function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey identify setPersonProperties".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
-posthog.init('phc_OIdhglnO1cpUZyqscx85DpF0YZ8NY4JFmJawLJlFFiq',{api_host:'https://us.i.posthog.com',autocapture:true,capture_pageview:true});
 </script>
 
 </body>

@@ -91,7 +91,7 @@ const markAnchorHydrationFailures = new Map<string, MarkAnchorHydrationFailure>(
 function reportMarkAnchorResolution(result: 'success' | 'failure'): void {
   if (typeof window === 'undefined') return;
   const path = window.location.pathname;
-  if (!(path.startsWith('/d/') || path === '/library' || path.startsWith('/library/'))) return;
+  if (!path.startsWith('/d/')) return;
   const url = `${window.location.origin}/api/metrics/mark-anchor`;
   const payload = JSON.stringify({ result, source: 'web' });
   if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {

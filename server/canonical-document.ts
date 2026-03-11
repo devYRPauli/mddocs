@@ -477,7 +477,7 @@ export async function mutateCanonicalDocument(args: CanonicalMutationArgs): Prom
     }, args.source);
 
     const deltaUpdate = Y.encodeStateAsUpdate(ydoc, persistedState.stateVector);
-    const compactionEvery = parsePositiveInt(process.env.COLLAB_COMPACTION_EVERY, 100);
+    const compactionInterval = parsePositiveInt(process.env.COLLAB_COMPACTION_EVERY, 100);
     const now = new Date().toISOString();
     let nextRevision = doc.revision + 1;
     let nextYStateVersion = Math.max(doc.y_state_version, persistedState.yStateVersion);
@@ -491,7 +491,7 @@ export async function mutateCanonicalDocument(args: CanonicalMutationArgs): Prom
         nextYStateVersion = Number(inserted.lastInsertRowid);
         const latestSnapshot = getLatestYSnapshot(args.slug);
         const updatesSinceSnapshot = latestSnapshot ? (nextYStateVersion - latestSnapshot.version) : nextYStateVersion;
-        if (updatesSinceSnapshot >= compactionEvery) {
+        if (updatesSinceSnapshot >= compactionInterval) {
           getDb().prepare(`
             INSERT OR REPLACE INTO document_y_snapshots (document_slug, version, snapshot_blob, created_at)
             VALUES (?, ?, ?, ?)

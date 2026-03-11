@@ -78,9 +78,9 @@ async function copyCode(id, triggerEl) {
   var copied = await writeTextToClipboard(text);
   flashCopyState(button, copied ? 'Copied!' : 'Copy failed');
 }
-document.querySelectorAll('.every-auth-link').forEach(function (link) {
+document.querySelectorAll('.auth-link').forEach(function (link) {
   link.addEventListener('click', function () {
-    link.textContent = 'Connecting to Every…';
+    link.textContent = 'Connecting…';
     link.style.pointerEvents = 'none';
     link.setAttribute('aria-disabled', 'true');
   }, { once: true });
@@ -92,7 +92,7 @@ function hasProofSessionCookie() {
   });
 }
 function homepageShowsSignedOutChrome() {
-  return !!document.querySelector('.utility-auth .every-auth-link');
+  return !!document.querySelector('.utility-auth .auth-link');
 }
 function clearPendingHomepageRefresh() {
   try {

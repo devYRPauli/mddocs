@@ -51,13 +51,13 @@ import {
   recordRewriteLiveClientBlock,
 } from './metrics.js';
 import {
-  handleEveryAuthCallback,
-  pollEveryAuth,
+  handleOAuthCallback,
+  pollOAuthFlow,
   resolveShareMarkdownAuthMode,
-  revokeEverySessionToken,
-  startEveryAuth,
-  validateEverySessionToken,
-} from './every-auth.js';
+  revokeHostedSessionToken,
+  startOAuthFlow,
+  validateHostedSessionToken,
+} from './hosted-auth.js';
 import {
   AGENT_DOCS_PATH,
   CANONICAL_CREATE_API_PATH,
@@ -69,7 +69,7 @@ import {
   resolveLegacyCreateMode,
   type LegacyCreateMode,
 } from './agent-guidance.js';
-import { captureDocumentCreatedTelemetry } from './posthog.js';
+import { captureDocumentCreatedTelemetry } from './telemetry.js';
 import { executeDocumentOperationAsync, type EngineExecutionResult } from './document-engine.js';
 import {
   type DocumentOpType,
@@ -370,62 +370,53 @@ function getDirectSharePresentedToken(req: Request): string | null {
 
 type DirectShareAuthorizationResult = {
   authed: boolean;
-  authMode: 'none' | 'api_key' | 'every' | 'every_or_api_key';
+  authMode: 'none' | 'api_key' | 'oauth' | 'oauth_or_api_key';
   actor: string;
 };
 
-function buildEveryOAuthNotConfiguredPayload(errorMessage: string): Record<string, unknown> {
+function buildOAuthNotConfiguredPayload(errorMessage: string): Record<string, unknown> {
   return {
     error: errorMessage,
-    code: 'EVERY_OAUTH_NOT_CONFIGURED',
-    hint: 'Set PROOF_EVERY_OAUTH_CLIENT_ID and PROOF_EVERY_OAUTH_CLIENT_SECRET on the server.',
-    setup: {
-      requiredEnv: ['PROOF_EVERY_OAUTH_CLIENT_ID', 'PROOF_EVERY_OAUTH_CLIENT_SECRET'],
-      optionalEnv: ['PROOF_EVERY_OAUTH_BASE_URL', 'PROOF_EVERY_OAUTH_REDIRECT_URI'],
-    },
+    code: 'OAUTH_NOT_CONFIGURED',
     workaround: {
       endpoint: '/api/documents',
       method: 'POST',
-      description: 'Use legacy anonymous create while Every OAuth is unavailable.',
+      description: 'Use share tokens or PROOF_SHARE_MARKDOWN_API_KEY while OAuth is unavailable.',
       body: { markdown: '# Title\n\nHello' },
     },
   };
 }
 
-function sendEveryAuthChallenge(req: Request, res: Response, reason: string): null {
+function sendOAuthChallenge(req: Request, res: Response, reason: string): null {
   const publicBaseUrl = getPublicBaseUrl(req);
-  const started = startEveryAuth(publicBaseUrl);
+  const started = startOAuthFlow(publicBaseUrl);
   if (!started.ok) {
-    res.status(503).json(buildEveryOAuthNotConfiguredPayload('Every OAuth is not configured on this server'));
+    res.status(503).json(buildOAuthNotConfiguredPayload('OAuth is not configured on this server'));
     return null;
   }
 
   res.status(401).json({
     error: 'Authentication required',
     code: 'AUTH_REQUIRED',
-    legacyCode: 'EVERY_AUTH_REQUIRED',
+    providerCode: 'OAUTH_REQUIRED',
     reason,
     fix: DIRECT_SHARE_AUTH_FIX,
-    getKey: 'https://every.to/settings/api-keys',
-    alternative: 'Or use Every OAuth: open authUrl in browser',
+    alternative: 'Or use OAuth: open authUrl in browser',
     authUrl: started.authUrl,
     pollUrl: started.pollUrl,
-    legacyPollUrl: started.legacyPollUrl,
     pollToken: started.pollToken,
     expiresAt: started.expiresAt,
     expiresIn: started.expiresIn,
     auth: {
-      provider: 'every',
+      provider: 'oauth',
       requestId: started.requestId,
       authUrl: started.authUrl,
       pollUrl: started.pollUrl,
-      legacyPollUrl: started.legacyPollUrl,
       pollToken: started.pollToken,
       expiresAt: started.expiresAt,
       expiresIn: started.expiresIn,
-      startEndpoint: '/api/auth/every/start',
+      startEndpoint: '/api/auth/start',
       pollEndpoint: '/api/auth/poll/:requestId',
-      legacyPollEndpoint: '/api/auth/every/poll/:requestId',
     },
   });
   return null;
@@ -485,24 +476,24 @@ async function authorizeDirectShareRequest(
   }
 
   const requiredApiKey = getDirectShareApiKey();
-  if (authMode === 'every_or_api_key' && requiredApiKey && presented === requiredApiKey) {
+  if (authMode === 'oauth_or_api_key' && requiredApiKey && presented === requiredApiKey) {
     return { authed: true, authMode, actor: 'api-key' };
   }
 
   if (!presented) {
-    return sendEveryAuthChallenge(req, res, 'missing_token');
+    return sendOAuthChallenge(req, res, 'missing_token');
   }
 
-  const validated = await validateEverySessionToken(presented, publicBaseUrl);
+  const validated = await validateHostedSessionToken(presented, publicBaseUrl);
   if (validated.ok && validated.principal) {
     return {
       authed: true,
       authMode,
-      actor: `every:${validated.principal.userId}`,
+      actor: `oauth:${validated.principal.userId}`,
     };
   }
 
-  return sendEveryAuthChallenge(req, res, validated.reason || 'invalid_token');
+  return sendOAuthChallenge(req, res, validated.reason || 'invalid_token');
 }
 
 function checkDirectShareRateLimit(
@@ -665,7 +656,7 @@ function getExplicitShareSecret(req: Request): string | null {
     const match = authHeader.match(/^Bearer\s+(.+)$/i);
     if (match && match[1]) {
       const token = match[1].trim();
-      // Every app-session tokens should not be treated as share secrets.
+      // Hosted app-session tokens should not be treated as share secrets.
       if (token && !token.startsWith('epsess_')) {
         return token;
       }
@@ -708,21 +699,21 @@ function canOwnerMutate(req: Request, doc: { owner_secret: string | null; owner_
   return canMutateByOwnerIdentity(doc, getExplicitShareSecret(req));
 }
 
-function isEveryPrincipalOwner(ownerId: string | null | undefined, everyUserId: number): boolean {
+function isOAuthPrincipalOwner(ownerId: string | null | undefined, oauthUserId: number): boolean {
   if (!ownerId || !ownerId.trim()) return false;
   const normalized = ownerId.trim();
-  const asString = String(everyUserId);
+  const asString = String(oauthUserId);
   return normalized === asString
-    || normalized === `every:${asString}`
-    || normalized === `every_user:${asString}`;
+    || normalized === `oauth:${asString}`
+    || normalized === `oauth_user:${asString}`;
 }
 
-async function ownerAuthorizedViaEvery(req: Request, ownerId: string | null | undefined): Promise<boolean> {
+async function ownerAuthorizedViaOAuth(req: Request, ownerId: string | null | undefined): Promise<boolean> {
   const bearerToken = getPresentedBearerToken(req);
   if (!bearerToken) return false;
-  const validated = await validateEverySessionToken(bearerToken, getPublicBaseUrl(req));
+  const validated = await validateHostedSessionToken(bearerToken, getPublicBaseUrl(req));
   if (!validated.ok || !validated.principal) return false;
-  return isEveryPrincipalOwner(ownerId, validated.principal.userId);
+  return isOAuthPrincipalOwner(ownerId, validated.principal.userId);
 }
 
 type OpenContextAccess = {
@@ -743,8 +734,8 @@ async function resolveOpenContextAccess(
   const bearerResolved = !explicitResolved && bearerToken ? resolveDocumentAccess(slug, bearerToken) : null;
   const resolved = explicitResolved ?? bearerResolved;
   const ownerBySecret = canMutateByOwnerIdentity(doc, explicitSecret);
-  const ownerByEvery = await ownerAuthorizedViaEvery(req, doc.owner_id);
-  const ownerAuthorized = ownerBySecret || ownerByEvery;
+  const ownerByOAuth = await ownerAuthorizedViaOAuth(req, doc.owner_id);
+  const ownerAuthorized = ownerBySecret || ownerByOAuth;
 
   if (ownerAuthorized) {
     return { role: 'owner_bot', tokenId: null, ownerAuthorized: true };
@@ -908,7 +899,7 @@ apiRoutes.post('/documents/:slug/access-links', async (req: Request, res: Respon
     return;
   }
 
-  const ownerAuthorized = canOwnerMutate(req, doc) || await ownerAuthorizedViaEvery(req, doc.owner_id);
+  const ownerAuthorized = canOwnerMutate(req, doc) || await ownerAuthorizedViaOAuth(req, doc.owner_id);
   const secret = getPresentedSecret(req);
   const role = secret ? resolveDocumentAccessRole(slug, secret) : null;
   const canCreateAccessLinks = ownerAuthorized || role === 'editor' || role === 'owner_bot';
@@ -940,20 +931,20 @@ apiRoutes.post('/documents/:slug/access-links', async (req: Request, res: Respon
   });
 });
 
-apiRoutes.post('/auth/every/start', (req: Request, res: Response) => {
-  const started = startEveryAuth(getPublicBaseUrl(req));
+apiRoutes.post('/auth/start', (req: Request, res: Response) => {
+  const started = startOAuthFlow(getPublicBaseUrl(req));
   if (!started.ok) {
-    res.status(503).json(buildEveryOAuthNotConfiguredPayload(started.error));
+    res.status(503).json(buildOAuthNotConfiguredPayload(started.error));
     return;
   }
   res.json({
     success: true,
-    provider: 'every',
+    provider: 'oauth',
     ...started,
   });
 });
 
-function handleEveryAuthPoll(req: Request, res: Response): void {
+function handleOAuthPoll(req: Request, res: Response): void {
   const requestId = req.params.requestId;
   if (!requestId || !requestId.trim()) {
     res.status(400).json({ error: 'Missing requestId', code: 'BAD_REQUEST' });
@@ -970,7 +961,7 @@ function handleEveryAuthPoll(req: Request, res: Response): void {
     return;
   }
 
-  const polled = pollEveryAuth(requestId, pollToken);
+  const polled = pollOAuthFlow(requestId, pollToken);
   if (!polled) {
     res.status(404).json({ error: 'Auth request not found or expired', code: 'AUTH_REQUEST_NOT_FOUND' });
     return;
@@ -982,10 +973,9 @@ function handleEveryAuthPoll(req: Request, res: Response): void {
   res.json({ success: polled.status === 'completed', ...polled });
 }
 
-apiRoutes.get('/auth/poll/:requestId', handleEveryAuthPoll);
-apiRoutes.get('/auth/every/poll/:requestId', handleEveryAuthPoll);
+apiRoutes.get('/auth/poll/:requestId', handleOAuthPoll);
 
-apiRoutes.get('/auth/every/callback', async (req: Request, res: Response) => {
+apiRoutes.get('/auth/callback', async (req: Request, res: Response) => {
   const state = typeof req.query.state === 'string' ? req.query.state.trim() : '';
   const code = typeof req.query.code === 'string' ? req.query.code.trim() : '';
   const error = typeof req.query.error === 'string' ? req.query.error.trim() : '';
@@ -994,7 +984,7 @@ apiRoutes.get('/auth/every/callback', async (req: Request, res: Response) => {
     return;
   }
 
-  const result = await handleEveryAuthCallback({
+  const result = await handleOAuthCallback({
     state,
     code: code || undefined,
     error: error || undefined,
@@ -1008,13 +998,13 @@ apiRoutes.get('/auth/every/callback', async (req: Request, res: Response) => {
   res.status(status).type('html').send(`<!doctype html><html><body><h1>${title}</h1><p>${result.message}</p>${body}</body></html>`);
 });
 
-apiRoutes.post('/auth/every/logout', (req: Request, res: Response) => {
+apiRoutes.post('/auth/logout', (req: Request, res: Response) => {
   const token = getDirectSharePresentedToken(req);
   if (!token) {
     res.status(400).json({ error: 'Missing session token', code: 'MISSING_TOKEN' });
     return;
   }
-  const revoked = revokeEverySessionToken(token);
+  const revoked = revokeHostedSessionToken(token);
   res.json({ success: revoked });
 });
 

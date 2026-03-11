@@ -1,7 +1,7 @@
 import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { $prose } from '@milkdown/kit/utils';
-import { captureEvent } from '../../analytics/posthog';
+import { captureEvent } from '../../analytics/telemetry';
 
 const markdownLinkClickKey = new PluginKey('markdown-link-click');
 const AFFORDANCE_HORIZONTAL_GAP = 8;

@@ -12,7 +12,7 @@ function run(): void {
   const healthStart = serverSource.indexOf("app.get('/health', (_req, res) => {");
   assert(healthStart !== -1, 'Expected /health route in server/index.ts');
 
-  const healthEnd = serverSource.indexOf('\n});\n\n', healthStart);
+  const healthEnd = serverSource.indexOf("\n  app.get('/api/capabilities'", healthStart);
   assert(healthEnd !== -1, 'Expected to isolate /health route body');
 
   const healthBlock = serverSource.slice(healthStart, healthEnd);

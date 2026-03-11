@@ -59,10 +59,10 @@ const MAX_CONSECUTIVE_REGEX_NO_MATCH_SEARCHES = 8;
 const MIN_TOOL_CALLS_SINCE_PROPOSAL_GROWTH_FOR_BREAK = 16;
 const REGEX_NO_MATCH_BUDGET_MAX = 3;
 const MAX_SEARCH_DENIALS_AFTER_BUDGET_EXHAUSTED = 3;
-const EVERY_STYLE_SEARCH_CALLS_MAX_DEFAULT = 12;
+const STYLE_REVIEW_SEARCH_CALLS_MAX_DEFAULT = 12;
 const MAX_SCOPE_ENFORCEMENT_ERRORS_WITHOUT_PROGRESS = 3;
 const MIN_TOOL_CALLS_SINCE_PROPOSAL_GROWTH_FOR_SCOPE_BREAK = 6;
-const EVERY_STYLE_SEARCH_CALLS_MAX_BY_FOCUS: Record<string, number> = {
+const STYLE_REVIEW_SEARCH_CALLS_MAX_BY_FOCUS: Record<string, number> = {
   abbreviations: 4,
   bylines: 4,
   capitalization: 4,
@@ -81,7 +81,7 @@ const ORCHESTRATION_PROTOCOL = `You are part of an orchestrated review. Use prop
 
 The full style guide and/or document may be provided below. If they are present, treat them as canonical and do not call read_style_guide() or read_document(), even if other instructions tell you to. If either is missing, call the corresponding tool once at the start. After you have the rules and document context, use search() to scan for concrete violations in your focus area.
 
-Critical Every rules that are easy to get wrong:
+Critical editorial rules that are easy to get wrong:
 - Numbers: spell out one through nine; use numerals for 10+ and always use numerals for percentages and ages.
 - Established abbreviations stay abbreviated: AI, CMS, DVD, FTP, TV, UK, and UN.
 - Dashes and ranges: em dashes have no spaces around them, and numeric ranges should use en dashes. If your focus area touches dashes/ranges, explicitly search for "— ", " —", and the regex "\\d+-\\d+".
@@ -427,15 +427,15 @@ export class SubAgentRunner {
         focusAreaName: focusArea.name,
       },
     });
-    const isEveryStyleAgent = agentId.includes('every-style')
-      || actor.includes('every-style')
+    const isStyleReviewAgent = agentId.includes('style-review')
+      || actor.includes('style-review')
       || agentId.includes('demo-day')
       || actor.includes('demo-day');
     const baseFocusAreaId = focusArea.id.startsWith(`${runId}-`)
       ? focusArea.id.slice(runId.length + 1) || focusArea.id
       : focusArea.id;
-    const everyStyleSearchCallsMax = isEveryStyleAgent
-      ? (EVERY_STYLE_SEARCH_CALLS_MAX_BY_FOCUS[baseFocusAreaId] ?? EVERY_STYLE_SEARCH_CALLS_MAX_DEFAULT)
+    const styleReviewSearchCallsMax = isStyleReviewAgent
+      ? (STYLE_REVIEW_SEARCH_CALLS_MAX_BY_FOCUS[baseFocusAreaId] ?? STYLE_REVIEW_SEARCH_CALLS_MAX_DEFAULT)
       : null;
     let candidateCount = 0;
     let lastPresenceProposalTotal = 0;
@@ -493,7 +493,7 @@ export class SubAgentRunner {
       documentContent,
       onToolEvent: handleToolEvent,
     });
-    if (isEveryStyleAgent && baseFocusAreaId === 'headlines') {
+    if (isStyleReviewAgent && baseFocusAreaId === 'headlines') {
       tools = tools.filter((tool) => tool.name !== 'search');
     }
     const anthropicTools = convertToolsToAnthropicFormat(tools);
@@ -527,8 +527,8 @@ export class SubAgentRunner {
       toolNames: [],
       toolErrors: [],
       searchCallsUsed: 0,
-      searchCallsMax: everyStyleSearchCallsMax,
-      searchCallsRemaining: everyStyleSearchCallsMax,
+      searchCallsMax: styleReviewSearchCallsMax,
+      searchCallsRemaining: styleReviewSearchCallsMax,
       regexNoMatchBudgetRemaining: REGEX_NO_MATCH_BUDGET_MAX,
       regexNoMatchBudgetExhausted: false,
       searchDenialsAfterBudgetExhausted: 0,
@@ -592,7 +592,7 @@ export class SubAgentRunner {
     let candidateEnforcementAttempts = 0;
     let nextToolChoiceName: string | null = null;
 
-    const isHeadlinesFocus = isEveryStyleAgent && baseFocusAreaId === 'headlines';
+    const isHeadlinesFocus = isStyleReviewAgent && baseFocusAreaId === 'headlines';
     const getRequiredRemainingCandidates = (): StructuralCandidateInfo[] => {
       if (!isHeadlinesFocus) return [];
       const remaining: StructuralCandidateInfo[] = [];
@@ -731,10 +731,10 @@ export class SubAgentRunner {
                 remaining: 0,
                 exhausted: true,
                 searchCallsUsed: searchCallsUsedSubAgent,
-                searchCallsMax: everyStyleSearchCallsMax,
-                searchCallsRemaining: everyStyleSearchCallsMax === null
+                searchCallsMax: styleReviewSearchCallsMax,
+                searchCallsRemaining: styleReviewSearchCallsMax === null
                   ? null
-                  : Math.max(0, everyStyleSearchCallsMax - searchCallsUsedSubAgent),
+                  : Math.max(0, styleReviewSearchCallsMax - searchCallsUsedSubAgent),
                 denialCount: searchDenialsAfterBudgetExhausted,
               },
               budgetMessage: exhaustedError,
@@ -754,9 +754,9 @@ export class SubAgentRunner {
             continue;
           }
 
-          if (isEveryStyleAgent && toolBlock.name === 'search') {
-            if (everyStyleSearchCallsMax !== null && searchCallsUsedSubAgent >= everyStyleSearchCallsMax) {
-              const exhaustedError = `No matches budget exhausted: search call budget exhausted (${searchCallsUsedSubAgent}/${everyStyleSearchCallsMax}).`;
+          if (isStyleReviewAgent && toolBlock.name === 'search') {
+            if (styleReviewSearchCallsMax !== null && searchCallsUsedSubAgent >= styleReviewSearchCallsMax) {
+              const exhaustedError = `No matches budget exhausted: search call budget exhausted (${searchCallsUsedSubAgent}/${styleReviewSearchCallsMax}).`;
               const syntheticResult = {
                 success: false,
                 count: 0,
@@ -767,7 +767,7 @@ export class SubAgentRunner {
                   remaining: 0,
                   exhausted: true,
                   searchCallsUsed: searchCallsUsedSubAgent,
-                  searchCallsMax: everyStyleSearchCallsMax,
+                  searchCallsMax: styleReviewSearchCallsMax,
                   searchCallsRemaining: 0,
                   denialCount: searchDenialsAfterBudgetExhausted,
                 },
@@ -852,7 +852,7 @@ export class SubAgentRunner {
             const searchInput = toolBlock.input as { type?: unknown } | undefined;
             const searchTypeRaw = typeof searchInput?.type === 'string' ? searchInput.type : '';
             const isRegexSearch = searchTypeRaw === 'regex'
-              || (isEveryStyleAgent && searchTypeRaw !== 'text');
+              || (isStyleReviewAgent && searchTypeRaw !== 'text');
             const isRegexNoMatchSearch = isRegexSearch && isNoMatchSearchResult(toolResult);
             const isRegexMatchSearch = isRegexSearch && !isNoMatchSearchResult(toolResult);
             const toolBudget = isRegexSearch && toolResult && typeof toolResult === 'object'
@@ -909,8 +909,8 @@ export class SubAgentRunner {
             // Surface the remaining regex no-match budget to the model so it can stop early.
             if (isRegexSearch) {
               const remaining = regexNoMatchBudgetExhausted ? 0 : regexNoMatchBudgetRemaining;
-              const searchCallsRemaining = isEveryStyleAgent
-                ? Math.max(0, (everyStyleSearchCallsMax ?? EVERY_STYLE_SEARCH_CALLS_MAX_DEFAULT) - searchCallsUsedSubAgent)
+              const searchCallsRemaining = isStyleReviewAgent
+                ? Math.max(0, (styleReviewSearchCallsMax ?? STYLE_REVIEW_SEARCH_CALLS_MAX_DEFAULT) - searchCallsUsedSubAgent)
                 : null;
               const baseBudgetMessage = toolResult && typeof toolResult === 'object'
                 ? (toolResult as { budgetMessage?: unknown }).budgetMessage
@@ -925,7 +925,7 @@ export class SubAgentRunner {
               const budgetMessage =
                 searchCallsRemaining === null
                   ? budgetMessageCore
-                  : `${budgetMessageCore} Search calls remaining: ${searchCallsRemaining}/${everyStyleSearchCallsMax ?? EVERY_STYLE_SEARCH_CALLS_MAX_DEFAULT}.`;
+                  : `${budgetMessageCore} Search calls remaining: ${searchCallsRemaining}/${styleReviewSearchCallsMax ?? STYLE_REVIEW_SEARCH_CALLS_MAX_DEFAULT}.`;
               const base =
                 toolResult && typeof toolResult === 'object'
                   ? toolResult as Record<string, unknown>
@@ -940,9 +940,9 @@ export class SubAgentRunner {
                   remaining,
                   exhausted: regexNoMatchBudgetExhausted,
                   ...baseBudget,
-                  searchCallsUsed: isEveryStyleAgent ? searchCallsUsedSubAgent : null,
-                  searchCallsMax: everyStyleSearchCallsMax,
-                  searchCallsRemaining: isEveryStyleAgent ? searchCallsRemaining : null,
+                  searchCallsUsed: isStyleReviewAgent ? searchCallsUsedSubAgent : null,
+                  searchCallsMax: styleReviewSearchCallsMax,
+                  searchCallsRemaining: isStyleReviewAgent ? searchCallsRemaining : null,
                   denialCount: searchDenialsAfterBudgetExhausted,
                 },
                 budgetMessage,
@@ -1093,9 +1093,9 @@ export class SubAgentRunner {
     const proposals = proposalCollector.list();
     const finishedAt = Date.now();
     const rawTextPreview = rawText.slice(0, 200);
-    const searchCallsRemaining = everyStyleSearchCallsMax === null
+    const searchCallsRemaining = styleReviewSearchCallsMax === null
       ? null
-      : Math.max(0, everyStyleSearchCallsMax - searchCallsUsedSubAgent);
+      : Math.max(0, styleReviewSearchCallsMax - searchCallsUsedSubAgent);
 
     subAgentDebugStates.set(agentId, {
       agentId,
@@ -1108,7 +1108,7 @@ export class SubAgentRunner {
       toolNames: toolNames.slice(-25),
       toolErrors,
       searchCallsUsed: searchCallsUsedSubAgent,
-      searchCallsMax: everyStyleSearchCallsMax,
+      searchCallsMax: styleReviewSearchCallsMax,
       searchCallsRemaining,
       regexNoMatchBudgetRemaining,
       regexNoMatchBudgetExhausted,

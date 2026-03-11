@@ -18,7 +18,7 @@
 /**
  * Known colors for standard values
  * These are the "blessed" colors that have been designed to work well
- * Palette: Soft Focus - designed to fit Every's aesthetic
+ * Palette: Soft Focus - designed for the Proof editor surface
  */
 const KNOWN_COLORS: Record<string, string> = {
   // Origin/authorship

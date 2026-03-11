@@ -181,7 +181,7 @@ import {
   unfollowAgent as unfollowAgentInEditor,
   getFollowedAgent as getFollowedAgentInEditor,
 } from './agent-navigation';
-import { captureEvent, initPostHog } from '../analytics/posthog';
+import { captureEvent, initTelemetry } from '../analytics/telemetry';
 import { getSkillsRegistry } from '../agent/skills/registry';
 import {
   runReview,
@@ -1136,7 +1136,7 @@ class ProofEditorImpl implements ProofEditor {
     const windowId = proofConfig.windowId;
     const documentId = proofConfig.documentId;
 
-    initPostHog({ windowId, documentId });
+    initTelemetry({ windowId, documentId });
 
     initSessionManager({
       persistenceKey: `proof-agent-sessions:${windowId ?? 'default'}:${documentId ?? 'unknown'}`,

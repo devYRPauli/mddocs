@@ -41,7 +41,7 @@ When the physical typist differs from the intellectual origin:
 ```yaml
 version: "2.0"
 conventions:
-  - "https://github.com/EveryInc/proof/blob/main/conventions/default.yaml"
+  - "https://example.com/proof/default.yaml"
   - "https://mycompany.com/custom-conventions.yaml"
 
 document:
@@ -288,7 +288,7 @@ Documents can reference external convention files for extensibility:
 
 ```yaml
 conventions:
-  - "https://github.com/EveryInc/proof/blob/main/conventions/default.yaml"
+  - "https://example.com/proof/default.yaml"
   - "https://mycompany.com/proof-legal.yaml"
 ```
 
@@ -376,7 +376,7 @@ Are you suggesting/proposing something?
 ```yaml
 version: "2.0"
 conventions:
-  - "https://github.com/EveryInc/proof/blob/main/conventions/default.yaml"
+  - "https://example.com/proof/default.yaml"
 
 document:
   fingerprint: "sha256:abc123def456..."

@@ -17,7 +17,7 @@ import {
   type SelectorRange,
 } from './utils/selectors';
 import { setAgentCursor, setAgentSelection } from './plugins/agent-cursor';
-import { captureEvent } from '../analytics/posthog';
+import { captureEvent } from '../analytics/telemetry';
 
 // Types
 

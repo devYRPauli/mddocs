@@ -575,30 +575,6 @@ metricsApiRoutes.post('/mirror-file-creation', (req: Request, res: Response) => 
   res.json({ success: true });
 });
 
-metricsApiRoutes.post('/library-claim', (req: Request, res: Response) => {
-  const event = typeof req.body?.event === 'string' ? req.body.event.trim() : '';
-  const allowedEvents = new Set(['impression', 'start', 'complete', 'claim', 'failure']);
-  if (!allowedEvents.has(event)) {
-    res.status(400).json({ success: false, error: 'event must be impression, start, complete, claim, or failure' });
-    return;
-  }
-  const source = typeof req.body?.source === 'string' && req.body.source.trim()
-    ? req.body.source.trim()
-    : 'web';
-  const surface = typeof req.body?.surface === 'string' && req.body.surface.trim()
-    ? req.body.surface.trim()
-    : 'doc';
-  const reason = typeof req.body?.reason === 'string' && req.body.reason.trim()
-    ? req.body.reason.trim()
-    : undefined;
-  const rawCount = req.body?.count;
-  const count = typeof rawCount === 'number' && Number.isFinite(rawCount) && rawCount > 0
-    ? rawCount
-    : 1;
-  recordLibraryClaimFlow(event as 'impression' | 'start' | 'complete' | 'claim' | 'failure', source, surface, reason, count);
-  res.json({ success: true });
-});
-
 metricsApiRoutes.post('/auth-challenge', (req: Request, res: Response) => {
   const result = readResult(req.body);
   if (!result) {
