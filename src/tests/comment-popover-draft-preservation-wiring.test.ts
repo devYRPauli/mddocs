@@ -58,9 +58,12 @@ function run(): void {
     'Expected dedicated document-updated refresh method with draft preservation',
   );
   assert(
-    editorSource.includes('const draftSnapshot = this.captureCommentPopoverDraftSnapshot();')
+    editorSource.includes("this.scheduleCollabRecovery('document-updated', {")
+      && editorSource.includes('const draftSnapshot = preserveCommentDraft')
+      && editorSource.includes('this.captureCommentPopoverDraftSnapshot()')
+      && editorSource.includes('if (refreshed && draftSnapshot) {')
       && editorSource.includes('this.restoreCommentPopoverDraftWithRetry(draftSnapshot);'),
-    'Expected document-updated refresh method to capture and restore drafts',
+    'Expected document-updated refreshes to preserve drafts through the queued recovery path',
   );
   assert(
     editorSource.includes('collabClient.onDocumentUpdated(() => {')

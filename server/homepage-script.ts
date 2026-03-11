@@ -62,13 +62,14 @@ async function writeTextToClipboard(text) {
 }
 function flashCopyState(button, label) {
   if (!button) return;
+  var defaultLabel = button.getAttribute('data-copy-label') || button.textContent || 'Copy';
   button.textContent = label;
-  setTimeout(function () { button.textContent = 'Copy'; }, 1500);
+  setTimeout(function () { button.textContent = defaultLabel; }, 1500);
 }
-async function copyCode(id) {
+async function copyCode(id, triggerEl) {
   var el = document.getElementById(id);
   if (!el) return;
-  var button = el.querySelector('.copy-btn');
+  var button = triggerEl || el.querySelector('.copy-btn');
   var text = extractCodeBlockText(el);
   if (!text) {
     flashCopyState(button, 'Copy failed');
@@ -76,4 +77,53 @@ async function copyCode(id) {
   }
   var copied = await writeTextToClipboard(text);
   flashCopyState(button, copied ? 'Copied!' : 'Copy failed');
-}`;
+}
+document.querySelectorAll('.every-auth-link').forEach(function (link) {
+  link.addEventListener('click', function () {
+    link.textContent = 'Connecting to Every…';
+    link.style.pointerEvents = 'none';
+    link.setAttribute('aria-disabled', 'true');
+  }, { once: true });
+});
+var HOME_AUTH_REFRESH_KEY = 'proof-home-auth-refresh-at';
+function hasProofSessionCookie() {
+  return document.cookie.split(';').some(function (part) {
+    return part.trim().indexOf('proof_session=') === 0;
+  });
+}
+function homepageShowsSignedOutChrome() {
+  return !!document.querySelector('.utility-auth .every-auth-link');
+}
+function clearPendingHomepageRefresh() {
+  try {
+    sessionStorage.removeItem(HOME_AUTH_REFRESH_KEY);
+  } catch (_error) {
+    // best-effort
+  }
+}
+function maybeRefreshHomepageAuthChrome() {
+  if (!hasProofSessionCookie() || !homepageShowsSignedOutChrome()) {
+    clearPendingHomepageRefresh();
+    return;
+  }
+  try {
+    var lastRefreshAt = Number.parseInt(sessionStorage.getItem(HOME_AUTH_REFRESH_KEY) || '0', 10);
+    if (Number.isFinite(lastRefreshAt) && lastRefreshAt > 0 && (Date.now() - lastRefreshAt) < 5000) {
+      return;
+    }
+    sessionStorage.setItem(HOME_AUTH_REFRESH_KEY, String(Date.now()));
+  } catch (_error) {
+    // sessionStorage best-effort
+  }
+  window.location.reload();
+}
+window.addEventListener('pageshow', function (event) {
+  var navEntries = typeof performance !== 'undefined' && typeof performance.getEntriesByType === 'function'
+    ? performance.getEntriesByType('navigation')
+    : [];
+  var navType = navEntries && navEntries[0] && navEntries[0].type;
+  if (event.persisted || navType === 'back_forward') {
+    maybeRefreshHomepageAuthChrome();
+  }
+});
+`;

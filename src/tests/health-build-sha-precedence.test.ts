@@ -7,6 +7,7 @@ function assert(condition: boolean, message: string): void {
 
 function run(): void {
   const serverSource = readFileSync(path.resolve(process.cwd(), 'server/index.ts'), 'utf8');
+  const buildInfoSource = readFileSync(path.resolve(process.cwd(), 'server/build-info.ts'), 'utf8');
 
   const healthStart = serverSource.indexOf("app.get('/health', (_req, res) => {");
   assert(healthStart !== -1, 'Expected /health route in server/index.ts');
@@ -15,22 +16,25 @@ function run(): void {
   assert(healthEnd !== -1, 'Expected to isolate /health route body');
 
   const healthBlock = serverSource.slice(healthStart, healthEnd);
+  assert(healthBlock.includes('const buildInfo = getBuildInfo();'), 'Expected /health route to resolve build metadata via getBuildInfo()');
 
-  const railwayIdx = healthBlock.indexOf('process.env.RAILWAY_GIT_COMMIT_SHA');
-  const githubIdx = healthBlock.indexOf('process.env.GITHUB_SHA');
-  const commitIdx = healthBlock.indexOf('process.env.COMMIT_SHA');
-  const proofIdx = healthBlock.indexOf('process.env.PROOF_BUILD_SHA');
+  const railwayIdx = buildInfoSource.indexOf('process.env.RAILWAY_GIT_COMMIT_SHA');
+  const githubIdx = buildInfoSource.indexOf('process.env.GITHUB_SHA');
+  const commitIdx = buildInfoSource.indexOf('process.env.COMMIT_SHA');
+  const generatedIdx = buildInfoSource.indexOf('readGeneratedBuildInfo()?.sha');
+  const proofIdx = buildInfoSource.indexOf('process.env.PROOF_BUILD_SHA');
 
-  assert(railwayIdx !== -1, 'Expected /health to read RAILWAY_GIT_COMMIT_SHA');
-  assert(githubIdx !== -1, 'Expected /health to read GITHUB_SHA');
-  assert(commitIdx !== -1, 'Expected /health to read COMMIT_SHA');
-  assert(proofIdx !== -1, 'Expected /health to read PROOF_BUILD_SHA');
+  assert(railwayIdx !== -1, 'Expected build-info helper to read RAILWAY_GIT_COMMIT_SHA');
+  assert(githubIdx !== -1, 'Expected build-info helper to read GITHUB_SHA');
+  assert(commitIdx !== -1, 'Expected build-info helper to read COMMIT_SHA');
+  assert(generatedIdx !== -1, 'Expected build-info helper to read generated build metadata');
+  assert(proofIdx !== -1, 'Expected build-info helper to read PROOF_BUILD_SHA');
   assert(
-    railwayIdx < proofIdx && githubIdx < proofIdx && commitIdx < proofIdx,
-    'Regression guard: /health must prefer runtime deploy commit env vars ahead of fallback PROOF_BUILD_SHA so stale manual env values do not lie about the active deployment',
+    railwayIdx < generatedIdx && githubIdx < generatedIdx && commitIdx < generatedIdx && generatedIdx < proofIdx,
+    'Regression guard: runtime deploy SHA env vars must win first, generated deploy metadata must win next, and fallback PROOF_BUILD_SHA must stay last so stale manual env values do not lie about the active deployment',
   );
 
-  console.log('✓ /health prefers runtime deploy SHA env vars before fallback PROOF_BUILD_SHA');
+  console.log('✓ build-info helper preserves runtime SHA precedence before generated metadata and fallback PROOF_BUILD_SHA');
 }
 
 try {

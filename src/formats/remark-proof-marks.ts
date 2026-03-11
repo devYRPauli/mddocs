@@ -117,12 +117,15 @@ function parseProofHtml(value: string): MdastNode[] | null {
       if (!attrs) return null;
       const proof = attrs['data-proof'];
       if (!proof) return null;
+      const proofId = proof === 'authored'
+        ? (attrs['data-proof-id'] ?? attrs['data-id'])
+        : attrs['data-id'];
 
       const proofNode: ProofMarkNode = {
         type: 'proofMark',
         proof,
         attrs: {
-          id: attrs['data-id'],
+          id: proofId,
           by: attrs['data-by'],
           kind: attrs['data-kind'],
         },
@@ -186,12 +189,15 @@ function parseProofSpanToken(value: string): ProofSpanToken | null {
   if (!attrs) return null;
   const proof = attrs['data-proof'];
   if (!proof) return null;
+  const proofId = proof === 'authored'
+    ? (attrs['data-proof-id'] ?? attrs['data-id'])
+    : attrs['data-id'];
 
   return {
     type: 'open',
     proof,
     attrs: {
-      id: attrs['data-id'],
+      id: proofId,
       by: attrs['data-by'],
       kind: attrs['data-kind'],
     },
@@ -411,7 +417,11 @@ function renderProofMarkNode(node: ProofMarkNode): string {
   parts.push(`data-proof="${escapeAttr(proof)}"`);
 
   if (attrs.id) {
-    parts.push(`data-id="${escapeAttr(String(attrs.id))}"`);
+    parts.push(
+      proof === 'authored'
+        ? `data-proof-id="${escapeAttr(String(attrs.id))}"`
+        : `data-id="${escapeAttr(String(attrs.id))}"`,
+    );
   }
   if (attrs.by) {
     parts.push(`data-by="${escapeAttr(String(attrs.by))}"`);

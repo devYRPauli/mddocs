@@ -172,6 +172,7 @@ function applyYTextDiff(target: Y.Text, nextValue: string): void {
 export class CollabClient {
   private ydoc: Y.Doc | null = null;
   private provider: HocuspocusProvider | null = null;
+  private activeSession: CollabSessionInfo | null = null;
   private markdownText: Y.Text | null = null;
   private marksMap: Y.Map<unknown> | null = null;
   private marksHandler: MarksHandler | null = null;
@@ -195,6 +196,7 @@ export class CollabClient {
   private static readonly DOCUMENT_UPDATED_DEBOUNCE_MS = 600;
   private sessionRole: ShareRole | null = null;
   terminalCloseReason: CollabTerminalCloseReason = null;
+  lastAuthenticationFailureReason: string | null = null;
 
   constructor() {
     this.durableClientId = getOrCreateDurableClientId();
@@ -493,18 +495,25 @@ export class CollabClient {
     return marks;
   }
 
-  private mapAuthFailureToTerminalReason(reason: string): CollabTerminalCloseReason {
-    if (reason === 'document-not-found') return 'unshared';
-    if (
-      reason === 'permission-denied'
-      || reason === 'session-stale'
-      || reason === 'document-revoked'
-      || reason === 'document-paused'
-      || reason.startsWith('Failed to get token:')
-    ) {
-      return 'permission-denied';
-    }
-    return null;
+  private getProviderParameters(session: CollabSessionInfo): Record<string, string> {
+    return {
+      token: session.token,
+      role: session.role,
+    };
+  }
+
+  private usesSameLiveSession(session: CollabSessionInfo): boolean {
+    if (!this.activeSession) return false;
+    return this.activeSession.docId === session.docId
+      && this.activeSession.slug === session.slug
+      && this.activeSession.role === session.role
+      && this.activeSession.shareState === session.shareState
+      && this.activeSession.accessEpoch === session.accessEpoch;
+  }
+
+  requiresHardReconnect(session: CollabSessionInfo): boolean {
+    if (!this.provider || !this.ydoc) return true;
+    return !this.usesSameLiveSession(session);
   }
 
   connect(session: CollabSessionInfo): void {
@@ -513,11 +522,13 @@ export class CollabClient {
     }
 
     this.disconnect();
+    this.activeSession = { ...session };
     this.sessionRole = session.role;
     this.connectionStatus = 'connecting';
     this.unsyncedChanges = 0;
     this.hasSynced = false;
     this.terminalCloseReason = null;
+    this.lastAuthenticationFailureReason = null;
     this.emitSyncStatus();
     this.durableUpdatesEnabled = this.canPersistDurableUpdates(session.role);
     if (this.durableUpdatesEnabled) {
@@ -542,11 +553,8 @@ export class CollabClient {
       name: room,
       document: ydoc,
       preserveConnection: false,
-      parameters: {
-        token: session.token,
-        role: session.role,
-      },
-      token: session.token,
+      parameters: this.getProviderParameters(session),
+      token: () => this.activeSession?.token ?? null,
     });
 
     ydoc.on('update', (update, origin) => {
@@ -579,6 +587,7 @@ export class CollabClient {
       }
       if (event.status === 'connected') {
         this.terminalCloseReason = null;
+        this.lastAuthenticationFailureReason = null;
         if (this.lastDisconnectAt !== null) {
           const durationMs = Date.now() - this.lastDisconnectAt;
           this.lastDisconnectAt = null;
@@ -600,20 +609,14 @@ export class CollabClient {
 
     provider.on('authenticationFailed', (event: { reason?: string }) => {
       const reason = typeof event?.reason === 'string' ? event.reason : 'permission-denied';
-      this.terminalCloseReason = this.mapAuthFailureToTerminalReason(reason);
+      this.lastAuthenticationFailureReason = reason;
       this.connectionStatus = 'disconnected';
       this.hasSynced = false;
       this.lastDisconnectAt = Date.now();
       this.emitSyncStatus();
     });
 
-    provider.on('close', (event: { event?: { code?: number } }) => {
-      const code = event?.event?.code;
-      if (code === 4001) {
-        this.terminalCloseReason = 'unshared';
-      } else if (code === 4003 || code === 4403 || code === 4401) {
-        this.terminalCloseReason = 'permission-denied';
-      }
+    provider.on('close', () => {
       this.emitSyncStatus();
     });
 
@@ -646,6 +649,30 @@ export class CollabClient {
     if (this.marksHandler) {
       this.marksHandler(this.readMarks());
     }
+  }
+
+  softRefreshSession(session: CollabSessionInfo): boolean {
+    if (!this.provider || !this.ydoc || this.requiresHardReconnect(session)) return false;
+
+    this.activeSession = { ...session };
+    this.sessionRole = session.role;
+    this.terminalCloseReason = null;
+    this.lastAuthenticationFailureReason = null;
+    this.connectionStatus = 'connecting';
+    this.hasSynced = false;
+    this.emitSyncStatus();
+
+    this.provider.setConfiguration({
+      parameters: this.getProviderParameters(session),
+      token: () => this.activeSession?.token ?? null,
+    });
+    this.provider.configuration.websocketProvider.setConfiguration({
+      parameters: this.getProviderParameters(session),
+    });
+
+    this.provider.disconnect();
+    void this.provider.connect();
+    return true;
   }
 
   reconnectWithSession(session: CollabSessionInfo, options?: { preserveLocalState?: boolean }): void {
@@ -746,12 +773,14 @@ export class CollabClient {
     }
     this.markdownText = null;
     this.marksMap = null;
+    this.activeSession = null;
     this.lastDisconnectAt = null;
     this.connectionStatus = 'disconnected';
     this.unsyncedChanges = 0;
     this.hasSynced = false;
     this.applyingLocalMarks = false;
     this.terminalCloseReason = null;
+    this.lastAuthenticationFailureReason = null;
     this.sessionRole = null;
     this.emitSyncStatus();
   }

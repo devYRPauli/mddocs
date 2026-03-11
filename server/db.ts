@@ -686,6 +686,7 @@ function initDatabase(): void {
   d.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_doc_id ON documents(doc_id)');
   d.exec('CREATE INDEX IF NOT EXISTS idx_documents_share_state ON documents(share_state)');
   d.exec('CREATE INDEX IF NOT EXISTS idx_documents_slug_revision ON documents(slug, revision)');
+  d.exec('CREATE INDEX IF NOT EXISTS idx_documents_owner_id ON documents(owner_id)');
 
   d.exec(`
     CREATE TABLE IF NOT EXISTS document_projections (
@@ -935,6 +936,30 @@ function initDatabase(): void {
     ON ${ACTIVE_COLLAB_CONNECTIONS_TABLE}(instance_id, last_seen_at)
   `);
   activeCollabConnectionsTableInitialized = true;
+
+  d.exec(`
+    CREATE TABLE IF NOT EXISTS user_document_visits (
+      every_user_id INTEGER NOT NULL,
+      document_slug TEXT NOT NULL,
+      role TEXT,
+      first_visited_at TEXT NOT NULL,
+      last_visited_at TEXT NOT NULL,
+      PRIMARY KEY (every_user_id, document_slug)
+    )
+  `);
+  d.exec('CREATE INDEX IF NOT EXISTS idx_udv_user_last ON user_document_visits(every_user_id, last_visited_at)');
+  d.exec('CREATE INDEX IF NOT EXISTS idx_udv_document_slug ON user_document_visits(document_slug)');
+
+  d.exec(`
+    CREATE TABLE IF NOT EXISTS library_documents (
+      every_user_id INTEGER PRIMARY KEY,
+      document_slug TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (document_slug) REFERENCES documents(slug)
+    )
+  `);
+  d.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_library_documents_slug ON library_documents(document_slug)');
 }
 
 export function createDocument(
@@ -2769,7 +2794,7 @@ export function touchShareAuthSessionVerification(input: {
         session_expires_at = COALESCE(?, session_expires_at),
         last_verified_at = ?,
         updated_at = ?,
-        revoked_at = CASE WHEN ? = 0 THEN ? ELSE NULL END
+        revoked_at = NULL
       WHERE session_token_hash = ?
     `).run(
       input.email ?? null,
@@ -2777,8 +2802,6 @@ export function touchShareAuthSessionVerification(input: {
       subscriberValue,
       input.sessionExpiresAt ?? null,
       now,
-      now,
-      subscriberValue,
       now,
       hash,
     );
@@ -2794,5 +2817,166 @@ export function revokeShareAuthSession(sessionToken: string): boolean {
     SET revoked_at = ?, updated_at = ?
     WHERE session_token_hash = ?
   `).run(now, now, hash);
+  return result.changes > 0;
+}
+
+// ── User Document Visits (dashboard) ──────────────────────────────────────────
+
+export function upsertUserDocumentVisit(everyUserId: number, slug: string, role?: string): void {
+  assertWritesAllowed('upsertUserDocumentVisit');
+  const now = new Date().toISOString();
+  getDb().prepare(`
+    INSERT INTO user_document_visits (every_user_id, document_slug, role, first_visited_at, last_visited_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT (every_user_id, document_slug) DO UPDATE SET
+      last_visited_at = excluded.last_visited_at,
+      role = COALESCE(excluded.role, user_document_visits.role)
+  `).run(everyUserId, slug, role ?? null, now, now);
+}
+
+export function getLibraryDocumentSlug(everyUserId: number): string | null {
+  const row = getDb()
+    .prepare('SELECT document_slug FROM library_documents WHERE every_user_id = ? LIMIT 1')
+    .get(everyUserId) as { document_slug: string } | undefined;
+  return row?.document_slug ?? null;
+}
+
+export function upsertLibraryDocument(everyUserId: number, slug: string): void {
+  assertWritesAllowed('upsertLibraryDocument');
+  const now = new Date().toISOString();
+  getDb().prepare(`
+    INSERT INTO library_documents (every_user_id, document_slug, created_at, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT (every_user_id) DO UPDATE SET
+      document_slug = excluded.document_slug,
+      updated_at = excluded.updated_at
+  `).run(everyUserId, slug, now, now);
+}
+
+export function listDocumentVisitUserIds(slug: string, limit: number = 200): number[] {
+  const rows = getDb().prepare(`
+    SELECT every_user_id
+    FROM user_document_visits
+    WHERE document_slug = ?
+    ORDER BY last_visited_at DESC
+    LIMIT ?
+  `).all(slug, limit) as Array<{ every_user_id: number }>;
+  return rows.map((row) => row.every_user_id);
+}
+
+export interface DashboardDocumentRow {
+  slug: string;
+  title: string | null;
+  share_state: string;
+  updated_at: string;
+  created_at: string;
+  last_visited_at?: string;
+  is_owned?: number;
+  copy_url?: string;
+}
+
+export function listUserOwnedDocuments(everyUserId: number, limit: number = 50): DashboardDocumentRow[] {
+  const asStr = String(everyUserId);
+  return getDb().prepare(`
+    SELECT slug, title, share_state, updated_at, created_at
+    FROM documents
+    WHERE (owner_id = ? OR owner_id = ? OR owner_id = ?)
+      AND deleted_at IS NULL
+    ORDER BY updated_at DESC
+    LIMIT ?
+  `).all(asStr, `every:${asStr}`, `every_user:${asStr}`, limit) as DashboardDocumentRow[];
+}
+
+export function listSharedWithMeDocuments(everyUserId: number, limit: number = 50): DashboardDocumentRow[] {
+  const asStr = String(everyUserId);
+  return getDb().prepare(`
+    SELECT d.slug, d.title, d.share_state, d.updated_at, d.created_at, v.last_visited_at
+    FROM user_document_visits v
+    JOIN documents d ON d.slug = v.document_slug
+    WHERE v.every_user_id = ?
+      AND d.deleted_at IS NULL
+      AND d.share_state != 'DELETED'
+      AND (d.owner_id IS NULL OR (d.owner_id != ? AND d.owner_id != ? AND d.owner_id != ?))
+    ORDER BY v.last_visited_at DESC
+    LIMIT ?
+  `).all(everyUserId, asStr, `every:${asStr}`, `every_user:${asStr}`, limit) as DashboardDocumentRow[];
+}
+
+export function listRecentlyOpenedDocuments(everyUserId: number, limit: number = 50): DashboardDocumentRow[] {
+  const asStr = String(everyUserId);
+  return getDb().prepare(`
+    SELECT d.slug, d.title, d.share_state, d.updated_at, d.created_at, v.last_visited_at,
+      CASE
+        WHEN (d.owner_id = ? OR d.owner_id = ? OR d.owner_id = ?) THEN 1
+        ELSE 0
+      END AS is_owned
+    FROM user_document_visits v
+    JOIN documents d ON d.slug = v.document_slug
+    WHERE v.every_user_id = ?
+      AND d.deleted_at IS NULL
+      AND d.share_state != 'DELETED'
+    ORDER BY v.last_visited_at DESC
+    LIMIT ?
+  `).all(asStr, `every:${asStr}`, `every_user:${asStr}`, everyUserId, limit) as DashboardDocumentRow[];
+}
+
+export function listDashboardDocuments(everyUserId: number, limit: number = 100): DashboardDocumentRow[] {
+  const asStr = String(everyUserId);
+  return getDb().prepare(`
+    SELECT slug, title, share_state, updated_at, created_at, last_visited_at, is_owned
+    FROM (
+      SELECT
+        d.slug,
+        d.title,
+        d.share_state,
+        d.updated_at,
+        d.created_at,
+        NULL AS last_visited_at,
+        1 AS is_owned,
+        d.updated_at AS sort_at
+      FROM documents d
+      WHERE (d.owner_id = ? OR d.owner_id = ? OR d.owner_id = ?)
+        AND d.deleted_at IS NULL
+
+      UNION ALL
+
+      SELECT
+        d.slug,
+        d.title,
+        d.share_state,
+        d.updated_at,
+        d.created_at,
+        v.last_visited_at AS last_visited_at,
+        0 AS is_owned,
+        COALESCE(v.last_visited_at, d.updated_at) AS sort_at
+      FROM user_document_visits v
+      JOIN documents d ON d.slug = v.document_slug
+      WHERE v.every_user_id = ?
+        AND d.deleted_at IS NULL
+        AND d.share_state = 'ACTIVE'
+        AND (d.owner_id IS NULL OR (d.owner_id != ? AND d.owner_id != ? AND d.owner_id != ?))
+    )
+    ORDER BY sort_at DESC
+    LIMIT ?
+  `).all(
+    asStr,
+    `every:${asStr}`,
+    `every_user:${asStr}`,
+    everyUserId,
+    asStr,
+    `every:${asStr}`,
+    `every_user:${asStr}`,
+    limit,
+  ) as DashboardDocumentRow[];
+}
+
+export function updateDocumentOwnerId(slug: string, ownerId: string): boolean {
+  assertWritesAllowed('updateDocumentOwnerId');
+  const now = new Date().toISOString();
+  const result = getDb().prepare(`
+    UPDATE documents
+    SET owner_id = ?, updated_at = ?
+    WHERE slug = ? AND (owner_id IS NULL OR owner_id = '')
+  `).run(ownerId, now, slug);
   return result.changes > 0;
 }

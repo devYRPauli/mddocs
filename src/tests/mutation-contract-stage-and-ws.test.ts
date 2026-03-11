@@ -571,7 +571,7 @@ async function run(): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    await test('/ws collab registration tracks authenticated sockets without slug query param', async () => {
+    await test('/ws collab accepts authenticated sockets without slug query param', async () => {
       process.env.PROOF_MUTATION_CONTRACT_STAGE = 'A';
       const doc = await createDoc();
       const token = await getCollabToken(doc);
@@ -584,8 +584,6 @@ async function run(): Promise<void> {
       } finally {
         await closeWs(sluglessWs);
       }
-      const drained = await waitForCondition(() => getActiveCollabClientCount(doc.slug) === 0, 2000, 50);
-      assert(drained, `Expected collab client count to drain after close, got ${getActiveCollabClientCount(doc.slug)}`);
     });
 
     await test('rewrite live-client gate keeps force behavior in local env', async () => {

@@ -104,7 +104,51 @@ async function run(): Promise<void> {
       `Expected browser-origin fragment edit to reach canonical markdown after empty-fragment repair. markdown=${String(row?.markdown ?? '')}`,
     );
 
-    console.log('✓ empty persisted fragment is repaired from markdown and browser-style fragment edits persist canonically');
+    const emptiedDoc = parser.parseMarkdown('');
+    loadedDoc!.transact(() => {
+      const fragment = loadedDoc!.getXmlFragment('prosemirror');
+      const length = fragment.length;
+      if (length > 0) fragment.delete(0, length);
+      prosemirrorToYXmlFragment(emptiedDoc as any, fragment as any);
+    }, 'browser-delete-all');
+
+    collab.__unsafePersistDocFromOnChangeForTests(slug, loadedDoc!);
+    await sleep(250);
+
+    const emptiedRow = db.getDocumentBySlug(slug);
+    assert(Boolean(emptiedRow), 'Expected canonical row after browser-style full delete');
+    assert(
+      (emptiedRow?.markdown ?? '').trim().length === 0,
+      `Expected browser-style full delete to persist empty markdown instead of restoring content. markdown=${String(emptiedRow?.markdown ?? '')}`,
+    );
+
+    await collab.stopCollabRuntime();
+    await collab.startCollabRuntimeEmbedded(4000);
+    const reconnectInstance = collab.__unsafeGetHocuspocusInstanceForTests() as {
+      createDocument?: (
+        slug: string,
+        request: Record<string, unknown>,
+        socketId: string,
+        context: Record<string, unknown>,
+        hooks: Record<string, unknown>,
+      ) => Promise<Y.Doc>;
+    };
+    assert(reconnectInstance && typeof reconnectInstance.createDocument === 'function', 'Expected reconnect collab test instance');
+
+    await reconnectInstance.createDocument(
+      slug,
+      {},
+      'empty-fragment-delete-reconnect-socket',
+      { isAuthenticated: true, readOnly: false, requiresAuthentication: true },
+      {},
+    );
+    const reloadedMarkdown = collab.__unsafeGetLoadedDocForTests(slug)?.getText('markdown').toString() ?? null;
+    assert(
+      (reloadedMarkdown ?? '').trim().length === 0,
+      `Expected reconnect after full delete to stay empty instead of restoring content. markdown=${String(reloadedMarkdown)}`,
+    );
+
+    console.log('✓ empty persisted fragments repair on load, but browser-style full deletes persist as empty without restoration');
   } finally {
     if (previousDbPath === undefined) {
       delete process.env.DATABASE_PATH;

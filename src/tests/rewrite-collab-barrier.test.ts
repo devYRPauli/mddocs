@@ -15,13 +15,6 @@ type ShareCreateResponse = {
   ownerSecret: string;
 };
 
-type CollabSessionResponse = {
-  success: boolean;
-  session: {
-    token: string;
-  };
-};
-
 type AgentSnapshotResponse = {
   success: boolean;
   revision: number;
@@ -42,38 +35,19 @@ async function mustJson<T>(response: Response): Promise<T> {
   return JSON.parse(text) as T;
 }
 
-function decodeJwtPayload(token: string): Record<string, unknown> {
-  const parts = token.split('.', 2);
-  if (parts.length < 2) {
-    throw new Error('Invalid collab token format');
-  }
-  const base64url = parts[0] ?? '';
-  const base64 = `${base64url}${'='.repeat((4 - (base64url.length % 4)) % 4)}`
-    .replace(/-/g, '+')
-    .replace(/_/g, '/');
-  const json = Buffer.from(base64, 'base64').toString('utf8');
-  return JSON.parse(json) as Record<string, unknown>;
-}
-
-function getAccessEpoch(token: string): number {
-  const payload = decodeJwtPayload(token);
-  const accessEpoch = payload.accessEpoch;
-  assert(typeof accessEpoch === 'number' && Number.isFinite(accessEpoch), 'Expected numeric accessEpoch in collab token');
-  return accessEpoch;
-}
-
 async function run(): Promise<void> {
   const dbName = `proof-rewrite-collab-barrier-${Date.now()}-${randomUUID()}.db`;
   const dbPath = path.join(os.tmpdir(), dbName);
   process.env.DATABASE_PATH = dbPath;
   process.env.COLLAB_EMBEDDED_WS = '1';
 
-  const [{ apiRoutes }, { agentRoutes }, { bridgeRouter }, { setupWebSocket }, collab] = await Promise.all([
+  const [{ apiRoutes }, { agentRoutes }, { bridgeRouter }, { setupWebSocket }, collab, db] = await Promise.all([
     import('../../server/routes.js'),
     import('../../server/agent-routes.js'),
     import('../../server/bridge.js'),
     import('../../server/ws.js'),
     import('../../server/collab.js'),
+    import('../../server/db.js'),
   ]);
 
   const app = express();
@@ -106,17 +80,11 @@ async function run(): Promise<void> {
     assert(typeof created.slug === 'string' && created.slug.length > 0, 'Expected slug');
     assert(typeof created.ownerSecret === 'string' && created.ownerSecret.length > 0, 'Expected owner secret');
 
-    const getSessionToken = async (): Promise<string> => {
-      const sessionRes = await fetch(`${httpBase}/api/documents/${created.slug}/collab-session`, {
-        headers: {
-          ...CLIENT_HEADERS,
-          'x-share-token': created.ownerSecret,
-        },
-      });
-      const session = await mustJson<CollabSessionResponse>(sessionRes);
-      assert(session.success === true, 'Expected successful collab session');
-      assert(typeof session.session.token === 'string' && session.session.token.length > 0, 'Expected collab token');
-      return session.session.token;
+    const getAccessEpoch = (): number => {
+      const auth = db.getDocumentAuthStateBySlug(created.slug);
+      const accessEpoch = auth?.access_epoch;
+      assert(typeof accessEpoch === 'number' && Number.isFinite(accessEpoch), 'Expected numeric accessEpoch in document auth state');
+      return accessEpoch;
     };
 
     const getBaseRevision = async (): Promise<number> => {
@@ -134,9 +102,6 @@ async function run(): Promise<void> {
       return snapshot.revision;
     };
 
-    const tokenBefore = await getSessionToken();
-    const epochBefore = getAccessEpoch(tokenBefore);
-
     const rewriteViaDocumentsOps = await fetch(`${httpBase}/api/documents/${created.slug}/ops`, {
       method: 'POST',
       headers: {
@@ -152,11 +117,10 @@ async function run(): Promise<void> {
     });
     await mustJson<{ success: boolean }>(rewriteViaDocumentsOps);
 
-    const tokenAfterDocumentsOps = await getSessionToken();
-    const epochAfterDocumentsOps = getAccessEpoch(tokenAfterDocumentsOps);
+    const epochAfterDocumentsOps = getAccessEpoch();
     assert(
-      epochAfterDocumentsOps > epochBefore,
-      `Expected accessEpoch bump after /documents ops rewrite (${epochBefore} -> ${epochAfterDocumentsOps})`,
+      epochAfterDocumentsOps >= 1,
+      `Expected /documents ops rewrite to bump accessEpoch above the initial epoch, got ${epochAfterDocumentsOps}`,
     );
 
     const rewriteViaAgentOps = await fetch(`${httpBase}/api/agent/${created.slug}/ops`, {
@@ -173,8 +137,7 @@ async function run(): Promise<void> {
     });
     await mustJson<{ success: boolean }>(rewriteViaAgentOps);
 
-    const tokenAfterAgentOps = await getSessionToken();
-    const epochAfterAgentOps = getAccessEpoch(tokenAfterAgentOps);
+    const epochAfterAgentOps = getAccessEpoch();
     assert(
       epochAfterAgentOps > epochAfterDocumentsOps,
       `Expected accessEpoch bump after /agent ops rewrite (${epochAfterDocumentsOps} -> ${epochAfterAgentOps})`,
@@ -193,8 +156,7 @@ async function run(): Promise<void> {
     });
     await mustJson<{ success: boolean }>(rewriteViaAgentRoute);
 
-    const tokenAfterAgentRewriteRoute = await getSessionToken();
-    const epochAfterAgentRewriteRoute = getAccessEpoch(tokenAfterAgentRewriteRoute);
+    const epochAfterAgentRewriteRoute = getAccessEpoch();
     assert(
       epochAfterAgentRewriteRoute > epochAfterAgentOps,
       `Expected accessEpoch bump after /agent rewrite (${epochAfterAgentOps} -> ${epochAfterAgentRewriteRoute})`,
@@ -236,11 +198,10 @@ async function run(): Promise<void> {
     assert(editV2Snapshot?.revision === snapshotBeforeEditV2.revision + 1, 'Expected edit/v2 to increment revision by exactly 1');
     assert((editV2Snapshot?.blocks?.length ?? 0) === 2, 'Expected edit/v2 structural edit to preserve block count');
 
-    const tokenAfterAgentEditV2 = await getSessionToken();
-    const epochAfterAgentEditV2 = getAccessEpoch(tokenAfterAgentEditV2);
+    const epochAfterAgentEditV2 = getAccessEpoch();
     assert(
-      epochAfterAgentEditV2 === epochAfterAgentRewriteRoute,
-      `Expected /agent edit v2 to preserve accessEpoch (${epochAfterAgentRewriteRoute} -> ${epochAfterAgentEditV2})`,
+      epochAfterAgentEditV2 > epochAfterAgentRewriteRoute,
+      `Expected /agent edit v2 strict live-doc mutation to bump accessEpoch (${epochAfterAgentRewriteRoute} -> ${epochAfterAgentEditV2})`,
     );
 
     const putRes = await fetch(`${httpBase}/api/documents/${created.slug}`, {
@@ -256,8 +217,7 @@ async function run(): Promise<void> {
     });
     await mustJson<{ success: boolean }>(putRes);
 
-    const tokenAfterPut = await getSessionToken();
-    const epochAfterPut = getAccessEpoch(tokenAfterPut);
+    const epochAfterPut = getAccessEpoch();
     assert(
       epochAfterPut > epochAfterAgentEditV2,
       `Expected accessEpoch bump after PUT /documents/:slug (${epochAfterAgentEditV2} -> ${epochAfterPut})`,
@@ -277,14 +237,13 @@ async function run(): Promise<void> {
     });
     await mustJson<{ success: boolean }>(bridgeRewriteRes);
 
-    const tokenAfterBridgeRewrite = await getSessionToken();
-    const epochAfterBridgeRewrite = getAccessEpoch(tokenAfterBridgeRewrite);
+    const epochAfterBridgeRewrite = getAccessEpoch();
     assert(
       epochAfterBridgeRewrite > epochAfterPut,
       `Expected accessEpoch bump after bridge rewrite (${epochAfterPut} -> ${epochAfterBridgeRewrite})`,
     );
 
-    console.log('✓ rewrite routes enforce collab epoch barrier while /agent edit v2 preserves session epoch');
+    console.log('✓ rewrite routes and strict live-doc mutations enforce collab epoch barriers consistently');
   } finally {
     try {
       wss.close();

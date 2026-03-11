@@ -5,7 +5,7 @@ import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getDocumentBySlug } from './db.js';
 import { getCanonicalReadableDocumentSync } from './collab.js';
 import { recordSnapshotPublish } from './metrics.js';
-import { buildSharePreviewModel, renderShareMetaTags, resolvePublicOrigin } from './share-preview.js';
+import { buildSharePreviewModel, renderSharePreviewHtmlPage, resolvePublicOrigin } from './share-preview.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,15 +38,6 @@ function getSnapshotPreviewOrigin(): string {
   // Snapshot HTML should reference app-owned share/OG endpoints.
   // Object storage origins may host only the HTML blob and not /og/share/*.
   return resolvePublicOrigin(null);
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 function snapshotPath(slug: string): string {
@@ -135,10 +126,6 @@ function renderSnapshotHtml(input: {
   shareState: string;
   revision: number | string;
 }): string {
-  const title = escapeHtml(input.title || `Shared Document ${input.slug}`);
-  const body = escapeHtml(input.markdown);
-  const updated = escapeHtml(input.updatedAt);
-  const state = escapeHtml(input.shareState);
   const preview = buildSharePreviewModel({
     slug: input.slug,
     origin: getSnapshotPreviewOrigin(),
@@ -150,28 +137,10 @@ function renderSnapshotHtml(input: {
       revision: input.revision,
     },
   });
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  ${renderShareMetaTags(preview)}
-  <style>
-    body { margin: 0; font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#f5f5f5; color:#111; }
-    .wrap { max-width: 900px; margin: 40px auto; background:#fff; border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,0.08); overflow:hidden; }
-    .banner { background:#0f766e; color:#fff; padding: 12px 18px; font-size: 14px; }
-    .meta { background:#f0fdfa; color:#134e4a; padding: 10px 18px; font-size: 12px; border-bottom: 1px solid #ccfbf1; }
-    pre { margin: 0; padding: 22px 20px 30px; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace; font-size: 14px; line-height: 1.55; }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="banner">Read-only snapshot. Live collaboration is currently unavailable.</div>
-    <div class="meta">State: ${state} · Updated: ${updated}</div>
-    <pre>${body}</pre>
-  </div>
-</body>
-</html>`;
+  return renderSharePreviewHtmlPage(preview, {
+    note: 'Read-only snapshot. Live collaboration is currently unavailable.',
+    markdown: input.markdown,
+  });
 }
 
 function renderUnavailableSnapshotHtml(input: {
@@ -181,9 +150,6 @@ function renderUnavailableSnapshotHtml(input: {
   shareState: string;
   revision: number | string;
 }): string {
-  const title = escapeHtml(input.title || `Shared Document ${input.slug}`);
-  const updated = escapeHtml(input.updatedAt);
-  const state = escapeHtml(input.shareState);
   const preview = buildSharePreviewModel({
     slug: input.slug,
     origin: getSnapshotPreviewOrigin(),
@@ -194,28 +160,7 @@ function renderUnavailableSnapshotHtml(input: {
       revision: input.revision,
     },
   });
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  ${renderShareMetaTags(preview)}
-  <style>
-    body { margin: 0; font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#f5f5f5; color:#111; }
-    .wrap { max-width: 760px; margin: 40px auto; background:#fff; border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,0.08); overflow:hidden; }
-    .banner { background:#111827; color:#fff; padding: 12px 18px; font-size: 14px; }
-    .meta { background:#f9fafb; color:#374151; padding: 10px 18px; font-size: 12px; border-bottom: 1px solid #e5e7eb; }
-    .body { padding: 22px 20px 30px; font-size: 14px; line-height: 1.55; }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="banner">Document unavailable</div>
-    <div class="meta">State: ${state} · Updated: ${updated}</div>
-    <div class="body">This shared document is not currently accessible.</div>
-  </div>
-</body>
-</html>`;
+  return renderSharePreviewHtmlPage(preview);
 }
 
 export function refreshSnapshotForSlug(slug: string): boolean {

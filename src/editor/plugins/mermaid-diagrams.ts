@@ -68,7 +68,9 @@ export function renderProofMermaidSvg(source: string): string {
 }
 
 function isShareDocumentPage(): boolean {
-  return typeof window !== 'undefined' && window.location.pathname.startsWith('/d/');
+  if (typeof window === 'undefined') return false;
+  const path = window.location.pathname;
+  return path.startsWith('/d/') || path === '/library' || path.startsWith('/library/');
 }
 
 function sanitizeSvg(svgMarkup: string): SVGSVGElement | null {

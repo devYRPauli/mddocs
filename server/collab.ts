@@ -62,6 +62,7 @@ export interface CollabSessionInfo {
   slug: string;
   role: ShareRole;
   shareState: ShareState;
+  accessEpoch: number;
   syncProtocol: 'pm-yjs-v1';
   collabWsUrl: string;
   token: string;
@@ -1598,7 +1599,10 @@ async function refreshMarkdownTextFromFragment(
   ydoc: Y.Doc,
   sourceActor: string,
 ): Promise<{ deriveFailed: boolean; refreshed: boolean; markdown: string | null }> {
-  await ensureFragmentSeededFromMarkdownIfEmpty(slug, ydoc, 'server-fragment-repair');
+  const fragmentState = ensureFragmentEditTracking(ydoc);
+  if (!fragmentState.dirty) {
+    await ensureFragmentSeededFromMarkdownIfEmpty(slug, ydoc, 'server-fragment-repair');
+  }
   const currentRowMarkdown = getDocumentBySlug(slug)?.markdown ?? '';
   const currentMarkdown = ydoc.getText('markdown').toString();
   const derivedFragmentMarkdown = await deriveMarkdownProjectionFromFragment(ydoc);
@@ -1608,7 +1612,6 @@ async function refreshMarkdownTextFromFragment(
   if (derivedFragmentMarkdown !== currentMarkdown) {
     const fragmentMatchesRow = derivedFragmentMarkdown === currentRowMarkdown;
     const projectionMatchesRow = currentMarkdown === currentRowMarkdown;
-    const fragmentState = ensureFragmentEditTracking(ydoc);
     if (projectionMatchesRow && !fragmentMatchesRow && !fragmentState.dirty) {
       return { deriveFailed: false, refreshed: false, markdown: currentMarkdown };
     }
@@ -1808,17 +1811,33 @@ export type CanonicalYDocHandle = {
 
 function setLoadedDocDbMeta(
   slug: string,
-  ydoc: Y.Doc,
   updatedAt: string | null,
   yStateVersion: number,
   accessEpoch: number | null,
+  baselineStateVector: Uint8Array,
 ): void {
   loadedDocDbMeta.set(slug, {
     updatedAt,
     yStateVersion,
     accessEpoch,
-    baselineStateVector: Y.encodeStateVector(ydoc),
+    baselineStateVector,
   });
+}
+
+function refreshLoadedDocDbMeta(
+  slug: string,
+  ydoc: Y.Doc,
+  updatedAt: string | null,
+  yStateVersion: number,
+  accessEpoch: number | null,
+): void {
+  setLoadedDocDbMeta(
+    slug,
+    updatedAt,
+    yStateVersion,
+    accessEpoch,
+    Y.encodeStateVector(ydoc),
+  );
 }
 
 function seedFragmentFromLegacyMarkdownFallback(ydoc: Y.Doc, markdown: string): void {
@@ -1885,6 +1904,35 @@ async function seedFragmentFromLegacyMarkdown(ydoc: Y.Doc, markdown: string): Pr
   seedFragmentFromLegacyMarkdownFallback(ydoc, markdown);
 }
 
+function persistCanonicalYjsBaseline(
+  slug: string,
+  row: NonNullable<ReturnType<typeof getDocumentBySlug>>,
+  ydoc: Y.Doc,
+): PersistedDocState {
+  const markdown = stripEphemeralCollabSpans(row.markdown ?? '');
+  const marks = parseStoredMarks(row.marks);
+  const snapshot = Y.encodeStateAsUpdate(ydoc);
+  if (snapshot.byteLength > 0) {
+    saveYSnapshot(slug, 1, snapshot);
+    replaceDocumentProjection(slug, markdown, marks, 1);
+  }
+
+  const updated = getDocumentBySlug(slug);
+  const yStateVersion = updated?.y_state_version ?? 1;
+
+  return {
+    ydoc,
+    updatedAt: updated?.updated_at ?? row.updated_at ?? null,
+    yStateVersion,
+    accessEpoch: typeof updated?.access_epoch === 'number'
+      ? updated.access_epoch
+      : typeof row.access_epoch === 'number'
+        ? row.access_epoch
+        : null,
+    stateVector: Y.encodeStateVector(ydoc),
+  };
+}
+
 function seedLegacyDocumentToPersistedYjs(slug: string, row: NonNullable<ReturnType<typeof getDocumentBySlug>>): PersistedDocState {
   const ydoc = new Y.Doc();
   const markdown = stripEphemeralCollabSpans(row.markdown ?? '');
@@ -1895,23 +1943,7 @@ function seedLegacyDocumentToPersistedYjs(slug: string, row: NonNullable<ReturnT
     applyMarksMapDiff(ydoc.getMap('marks'), marks);
     seedFragmentFromLegacyMarkdownFallback(ydoc, markdown);
   }, 'legacy-seed');
-  const snapshot = Y.encodeStateAsUpdate(ydoc);
-  if (snapshot.byteLength > 0) {
-    saveYSnapshot(slug, 1, snapshot);
-    getDb().prepare(`
-      UPDATE documents
-      SET y_state_version = 1
-      WHERE slug = ? AND share_state IN ('ACTIVE', 'PAUSED')
-    `).run(slug);
-  }
-
-  return {
-    ydoc,
-    updatedAt: row.updated_at ?? null,
-    yStateVersion: 1,
-    accessEpoch: typeof row.access_epoch === 'number' ? row.access_epoch : null,
-    stateVector: Y.encodeStateVector(ydoc),
-  };
+  return persistCanonicalYjsBaseline(slug, row, ydoc);
 }
 
 async function seedLegacyDocumentToPersistedYjsAsync(
@@ -1927,24 +1959,35 @@ async function seedLegacyDocumentToPersistedYjsAsync(
     applyMarksMapDiff(ydoc.getMap('marks'), marks);
   }, 'legacy-seed-markdown');
   await seedFragmentFromLegacyMarkdown(ydoc, markdown);
+  return persistCanonicalYjsBaseline(slug, row, ydoc);
+}
 
-  const snapshot = Y.encodeStateAsUpdate(ydoc);
-  if (snapshot.byteLength > 0) {
-    saveYSnapshot(slug, 1, snapshot);
-    getDb().prepare(`
-      UPDATE documents
-      SET y_state_version = 1
-      WHERE slug = ? AND share_state IN ('ACTIVE', 'PAUSED')
-    `).run(slug);
+export async function ensureCanonicalYjsBaselineForDocument(slug: string): Promise<boolean> {
+  if (!slug) return false;
+  const row = getDocumentBySlug(slug);
+  if (!row || row.share_state === 'DELETED' || row.share_state === 'REVOKED') return false;
+
+  const snapshot = getLatestYSnapshot(slug);
+  const startSeq = snapshot?.version ?? 0;
+  const updates = getYUpdatesAfter(slug, startSeq);
+  const persistedYStateVersion = getLatestYStateVersion(slug);
+  if (snapshot || updates.length > 0) {
+    if (persistedYStateVersion > 0) {
+      const projection = getProjectedDocumentBySlug(slug);
+      if ((row.y_state_version ?? 0) !== persistedYStateVersion || !projection || projection.projection_y_state_version !== persistedYStateVersion) {
+        replaceDocumentProjection(
+          slug,
+          stripEphemeralCollabSpans(row.markdown ?? ''),
+          parseStoredMarks(row.marks),
+          persistedYStateVersion,
+        );
+      }
+    }
+    return false;
   }
 
-  return {
-    ydoc,
-    updatedAt: row.updated_at ?? null,
-    yStateVersion: 1,
-    accessEpoch: typeof row.access_epoch === 'number' ? row.access_epoch : null,
-    stateVector: Y.encodeStateVector(ydoc),
-  };
+  await seedLegacyDocumentToPersistedYjsAsync(slug, row);
+  return true;
 }
 
 function readPersistedDocState(slug: string): PersistedDocState {
@@ -2156,10 +2199,11 @@ export function getCanonicalReadableDocumentSync(
 
   const fallbackReason = getProjectionFallbackReason(projected);
   recordProjectionReadFallback(source, fallbackReason);
-  const markdown = handle.ydoc.getText('markdown').toString();
+  const markdown = stripEphemeralCollabSpans(handle.ydoc.getText('markdown').toString());
   const marks = mergePreservedActionMarks(slug, encodeMarksMap(handle.ydoc.getMap('marks')));
   const rowMarks = parseStoredMarks(row.marks);
-  const mutationReady = row.markdown === markdown
+  const sanitizedRowMarkdown = stripEphemeralCollabSpans(row.markdown ?? '');
+  const mutationReady = sanitizedRowMarkdown === markdown
     && stableStringify(rowMarks) === stableStringify(marks);
 
   return {
@@ -2234,7 +2278,7 @@ export function registerCanonicalYDocPersistence(
     slug,
     Math.max(0, meta.yStateVersion - (getLatestYSnapshot(slug)?.version ?? 0)),
   );
-  setLoadedDocDbMeta(slug, ydoc, meta.updatedAt, meta.yStateVersion, meta.accessEpoch);
+  refreshLoadedDocDbMeta(slug, ydoc, meta.updatedAt, meta.yStateVersion, meta.accessEpoch);
   markSkipNextOnStorePersist(slug, ydoc);
   touchDoc(slug);
 }
@@ -2242,7 +2286,7 @@ export function registerCanonicalYDocPersistence(
 function refreshLoadedDocDbMetaFromDb(slug: string, ydoc: Y.Doc): void {
   const row = getDocumentBySlug(slug);
   const yStateVersion = getLatestYStateVersion(slug);
-  setLoadedDocDbMeta(
+  refreshLoadedDocDbMeta(
     slug,
     ydoc,
     row?.updated_at ?? null,
@@ -2257,7 +2301,7 @@ async function hydrateDocFromDbAsync(slug: string): Promise<Y.Doc> {
   docPersistGenerations.set(ydoc, getPersistGeneration(slug));
   lastPersistedStateVectors.set(slug, persisted.stateVector);
   updatesSinceCompaction.set(slug, 0);
-  setLoadedDocDbMeta(slug, ydoc, persisted.updatedAt, persisted.yStateVersion, persisted.accessEpoch);
+  refreshLoadedDocDbMeta(slug, ydoc, persisted.updatedAt, persisted.yStateVersion, persisted.accessEpoch);
   touchDoc(slug);
   return ydoc;
 }
@@ -2607,20 +2651,24 @@ type StoreConflictResolution =
     };
 
 function applyPersistedStateToLoadedDoc(slug: string, persistedState: PersistedDocState): void {
-  rememberLoadedDoc(slug, persistedState.ydoc);
+  const liveDoc = getLiveHocuspocusDoc(slug);
+  const nextDoc = liveDoc ?? persistedState.ydoc;
+  rememberLoadedDoc(slug, nextDoc);
   touchDoc(slug);
   lastPersistedStateVectors.set(slug, persistedState.stateVector);
   updatesSinceCompaction.set(slug, 0);
   setLoadedDocDbMeta(
     slug,
-    persistedState.ydoc,
     persistedState.updatedAt,
     persistedState.yStateVersion,
     persistedState.accessEpoch,
+    persistedState.stateVector,
   );
 }
 
 function scheduleStaleOnStoreReload(slug: string): void {
+  cancelPendingPersistWork(slug, { advanceGeneration: true });
+  collabInvalidations.add(slug);
   setTimeout(() => {
     void invalidateLoadedCollabDocumentAndWait(slug).catch((error) => {
       console.error('[collab] Failed to reload stale live doc after onStore conflict:', { slug, error });
@@ -2932,12 +2980,12 @@ export async function computeFragmentTextHashFromMarkdown(markdown: string): Pro
 export function stripEphemeralCollabSpans(markdown: string): string {
   if (!markdown || markdown.indexOf('<span') === -1) return markdown;
 
-  const cursorSpanPattern = /<span\b[^>]*(?:ProseMirror-yjs-cursor|proof-collab-cursor|proof-agent-cursor|data-proof-cursor|data-agent-cursor)[^>]*>([\s\S]*?)<\/span>/gi;
+  const cursorSpanPattern = /<span\b[^>]*(?:ProseMirror-yjs-cursor|proof-collab-cursor|proof-agent-cursor|data-proof-cursor|data-agent-cursor)[^>]*>[\s\S]*?<\/span>/gi;
   let sanitized = markdown;
   let previous = '';
   while (sanitized !== previous) {
     previous = sanitized;
-    sanitized = sanitized.replace(cursorSpanPattern, '$1');
+    sanitized = sanitized.replace(cursorSpanPattern, '');
   }
 
   // y-prosemirror cursor widgets use WORD JOINER separators (U+2060) around labels.
@@ -3194,7 +3242,7 @@ async function applyCanonicalDocumentToCollabInner(
     }
     rememberLoadedDoc(slug, ydoc);
     const currentRow = getDocumentBySlug(slug);
-    setLoadedDocDbMeta(
+    refreshLoadedDocDbMeta(
       slug,
       ydoc,
       currentRow?.updated_at ?? null,
@@ -3955,13 +4003,12 @@ async function scanAndQueueSuspiciousProjectionRepairs(
       const sameFingerprint = seen?.fingerprint === fingerprint;
       const withinCooldown = seen ? (now - seen.queuedAt) < oversizedCooldownMs : false;
       const oversizedCooldownActive = sameFingerprint && withinCooldown;
-      if (!oversizedCooldownActive) {
-        reasons.push('oversized_projection');
-        projectionRepairWorkerOversizedSeen.set(candidate.slug, {
-          fingerprint,
-          queuedAt: now,
-        });
-      }
+      if (oversizedCooldownActive) continue;
+      reasons.push('oversized_projection');
+      projectionRepairWorkerOversizedSeen.set(candidate.slug, {
+        fingerprint,
+        queuedAt: now,
+      });
     } else {
       projectionRepairWorkerOversizedSeen.delete(candidate.slug);
     }
@@ -4181,6 +4228,7 @@ export function buildCollabSession(
     slug,
     role,
     shareState: doc.share_state,
+    accessEpoch: doc.access_epoch,
     syncProtocol: 'pm-yjs-v1',
     collabWsUrl,
     token,

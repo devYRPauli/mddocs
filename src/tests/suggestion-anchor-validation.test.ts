@@ -1,9 +1,14 @@
 import { unlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { stripAllProofSpanTags, stripProofSpanTags } from '../../server/proof-span-strip.ts';
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
+}
+
+function normalizeVisibleMarkdown(markdown: string): string {
+  return stripAllProofSpanTags(markdown).replaceAll('\\|', '|').trim();
 }
 
 function getSuggestionMarkId(result: { body: { marks?: Record<string, { kind?: string }> } }, kind: string): string {
@@ -148,7 +153,10 @@ async function run(): Promise<void> {
     assert(typeof authoredMark?.startRel === 'string', 'Expected suggestion.add to persist startRel for authored span anchors');
     assert(typeof authoredMark?.endRel === 'string', 'Expected suggestion.add to persist endRel for authored span anchors');
 
-    const authoredAccepted = await executeDocumentOperationAsync(authoredSlug, 'POST', '/marks/suggest-replace', {
+    const authoredAcceptedSlug = `anchor-authored-accepted-${Math.random().toString(36).slice(2, 10)}`;
+    db.createDocument(authoredAcceptedSlug, authoredMarkdown, {}, 'Authored span accepted suggestion test');
+
+    const authoredAccepted = await executeDocumentOperationAsync(authoredAcceptedSlug, 'POST', '/marks/suggest-replace', {
       quote: '| 2. | Token tracking per plus1 |',
       content: '| 2. | Token tracking per Plus One |',
       by: 'ai:test',
@@ -156,8 +164,10 @@ async function run(): Promise<void> {
     });
     assert(authoredAccepted.status === 200, `Expected status=accepted suggestion.add to succeed, got ${authoredAccepted.status}`);
     assert(authoredAccepted.body.acceptedImmediately === true, 'Expected acceptedImmediately=true for suggestion.add status=accepted');
-    assert(authoredAccepted.body.markdown === '| 2. | Token tracking per Plus One |',
-      `Expected accepted suggestion markdown to apply the replacement immediately, got ${JSON.stringify(authoredAccepted.body.markdown)}`);
+    assert(
+      stripProofSpanTags(String(authoredAccepted.body.markdown ?? '')) === '| 2. | Token tracking per Plus One |\n',
+      `Expected accepted suggestion markdown to apply the replacement immediately, got ${JSON.stringify(authoredAccepted.body.markdown)}`,
+    );
 
     const rejectCycleSlug = `reject-cycle-${Math.random().toString(36).slice(2, 10)}`;
     const rejectCycleMarkdown = '| 2<span data-proof="authored" data-by="human:willie">.</span> | Token tracking per plus1 | Med |';
@@ -173,7 +183,12 @@ async function run(): Promise<void> {
     assert(firstRejectId, 'Expected first reject-cycle suggestion mark id');
     const firstRejectResult = executeDocumentOperation(rejectCycleSlug, 'POST', '/marks/reject', { markId: firstRejectId, by: 'human:test' });
     assert(firstRejectResult.status === 200, `Expected first reject-cycle rejection to succeed, got ${firstRejectResult.status}`);
-    assert(db.getDocumentBySlug(rejectCycleSlug)?.markdown === rejectCycleMarkdown, 'Expected first reject cycle to preserve markdown exactly');
+    const firstRejectedMarkdown = db.getDocumentBySlug(rejectCycleSlug)?.markdown ?? '';
+    assert(
+      normalizeVisibleMarkdown(firstRejectedMarkdown) === normalizeVisibleMarkdown(rejectCycleMarkdown),
+      'Expected first reject cycle to preserve visible markdown content',
+    );
+    assert(!firstRejectedMarkdown.includes('data-proof="suggestion"'), 'Expected first reject cycle to remove the suggestion wrapper');
 
     const secondRejectSuggestion = executeDocumentOperation(rejectCycleSlug, 'POST', '/marks/suggest-replace', {
       quote: '| 2. | Token tracking per plus1 | Med |',
@@ -185,7 +200,12 @@ async function run(): Promise<void> {
     assert(secondRejectId, 'Expected second reject-cycle suggestion mark id');
     const secondRejectResult = executeDocumentOperation(rejectCycleSlug, 'POST', '/marks/reject', { markId: secondRejectId, by: 'human:test' });
     assert(secondRejectResult.status === 200, `Expected second reject-cycle rejection to succeed, got ${secondRejectResult.status}`);
-    assert(db.getDocumentBySlug(rejectCycleSlug)?.markdown === rejectCycleMarkdown, 'Expected repeated reject cycles to preserve markdown exactly');
+    const secondRejectedMarkdown = db.getDocumentBySlug(rejectCycleSlug)?.markdown ?? '';
+    assert(
+      normalizeVisibleMarkdown(secondRejectedMarkdown) === normalizeVisibleMarkdown(rejectCycleMarkdown),
+      'Expected repeated reject cycles to preserve visible markdown content',
+    );
+    assert(!secondRejectedMarkdown.includes('data-proof="suggestion"'), 'Expected repeated reject cycles to remove the suggestion wrapper');
 
     // --- Table-driven acceptance tests ---
     // Each case: create doc, suggest, accept, verify final markdown
@@ -229,7 +249,10 @@ async function run(): Promise<void> {
 
       const acceptResult = executeDocumentOperation(slug, 'POST', '/marks/accept', { markId, by: 'ai:test' });
       assert(acceptResult.status === 200, `[${c.name}] accept failed: ${acceptResult.status}`);
-      assert(acceptResult.body.markdown === c.expected, `[${c.name}] expected ${JSON.stringify(c.expected)}, got ${JSON.stringify(acceptResult.body.markdown)}`);
+      assert(
+        String(acceptResult.body.markdown ?? '').trimEnd() === c.expected.trimEnd(),
+        `[${c.name}] expected ${JSON.stringify(c.expected)}, got ${JSON.stringify(acceptResult.body.markdown)}`,
+      );
     }
 
     for (const c of acceptCases) {

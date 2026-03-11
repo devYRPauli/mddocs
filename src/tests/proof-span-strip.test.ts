@@ -1,4 +1,9 @@
-import { buildStrippedIndexMap, stripProofSpanTags } from '../../server/proof-span-strip.ts';
+import {
+  buildStrippedIndexMap,
+  stripAllProofSpanTags,
+  stripAllProofSpanTagsWithReplacements,
+  stripProofSpanTags,
+} from '../../server/proof-span-strip.ts';
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -43,6 +48,40 @@ function run(): void {
     markdown[map[authoredTextStart] ?? -1],
     'd',
     'Expected authored text to map back to the original authored content',
+  );
+
+  const allStripped = stripAllProofSpanTags(markdown);
+  assertEqual(allStripped, 'Hello draft and commented text.', 'Expected all Proof spans to be stripped');
+
+  const staleSuggestionMarkdown = [
+    'Before ',
+    '<span data-proof="suggestion" data-id="s1" data-by="ai:test" data-kind="replace">truncated</span>',
+    ' after.',
+  ].join('');
+  const repairedBase = stripAllProofSpanTagsWithReplacements(staleSuggestionMarkdown, {
+    s1: 'restored quote text',
+  });
+  assertEqual(
+    repairedBase,
+    'Before restored quote text after.',
+    'Expected replacement-aware stripping to rebuild the proof-span-free base text',
+  );
+
+  const splitSuggestionMarkdown = [
+    'Before ',
+    '<span data-proof="suggestion" data-id="s2" data-by="ai:test" data-kind="replace">Alpha Beta </span>',
+    '<span data-proof="comment" data-id="c2" data-by="human:test">Gamma Delta Epsilon</span>',
+    '<span data-proof="suggestion" data-id="s2" data-by="ai:test" data-kind="replace"> Zeta Eta</span>',
+    ' After',
+  ].join('');
+  const splitBase = stripAllProofSpanTagsWithReplacements(splitSuggestionMarkdown, {
+    s2: 'Alpha Beta Gamma Delta Epsilon Zeta Eta',
+    c2: 'Gamma Delta Epsilon',
+  });
+  assertEqual(
+    splitBase,
+    'Before Alpha Beta Gamma Delta Epsilon Zeta Eta After',
+    'Expected replacement-aware stripping to rebuild split suggestion spans once per logical mark',
   );
 
   console.log('✓ proof span stripping preserves non-authored marks');

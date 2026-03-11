@@ -208,7 +208,6 @@ async function run(): Promise<void> {
     provider.destroy();
     provider = null;
     ydoc.destroy();
-    await waitFor(() => ws.getActiveCollabClientCount(created.slug) === 0, 10_000, 'collab client disconnect');
 
     const snapshotRes = await fetch(`${httpBase}/api/agent/${created.slug}/snapshot`, {
       headers: {

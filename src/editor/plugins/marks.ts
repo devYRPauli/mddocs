@@ -90,7 +90,8 @@ const markAnchorHydrationFailures = new Map<string, MarkAnchorHydrationFailure>(
 
 function reportMarkAnchorResolution(result: 'success' | 'failure'): void {
   if (typeof window === 'undefined') return;
-  if (!window.location.pathname.startsWith('/d/')) return;
+  const path = window.location.pathname;
+  if (!(path.startsWith('/d/') || path === '/library' || path.startsWith('/library/'))) return;
   const url = `${window.location.origin}/api/metrics/mark-anchor`;
   const payload = JSON.stringify({ result, source: 'web' });
   if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
@@ -2750,6 +2751,13 @@ export function accept(view: EditorView, markId: string, parser?: MarkdownParser
           : (typeof mark.content === 'string' && mark.content.trim().length > 0)
             ? mark.content
             : getTextForRange(view.state.doc, range);
+      const existingText = getTextForRange(view.state.doc, range);
+      if (existingText === replacementContent) {
+        // A no-op accept should only clear the suggestion mark and preserve any
+        // nested comments/review marks already anchored inside the range.
+        applied = true;
+        break;
+      }
       const structural = resolveStructuralReplaceRange(
         view.state.doc,
         range,
@@ -3267,6 +3275,14 @@ function injectGlowStyles(): void {
       font-size: 13px;
       line-height: 1.3;
     }
+    .proof-toast-submessage {
+      font-size: 12px;
+      color: #4b5563;
+      line-height: 1.35;
+    }
+    @media (prefers-color-scheme: dark) {
+      .proof-toast-submessage { color: #cbd5f5; }
+    }
     .proof-toast-close {
       position: absolute;
       top: -2px;
@@ -3316,6 +3332,9 @@ function injectGlowStyles(): void {
       gap: 6px;
     }
     .proof-toast-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       border: none;
       border-radius: 6px;
       padding: 5px 12px;
@@ -3323,7 +3342,27 @@ function injectGlowStyles(): void {
       cursor: pointer;
       font-weight: 500;
       font-family: inherit;
+      text-decoration: none;
       transition: opacity 150ms;
+    }
+    .proof-toast-primary {
+      background: #111827;
+      color: #fff;
+    }
+    .proof-toast-secondary {
+      background: transparent;
+      color: #111827;
+      border: 1px solid rgba(17, 24, 39, 0.2);
+    }
+    @media (prefers-color-scheme: dark) {
+      .proof-toast-primary {
+        background: #f8fafc;
+        color: #111827;
+      }
+      .proof-toast-secondary {
+        color: #e2e8f0;
+        border-color: rgba(226, 232, 240, 0.4);
+      }
     }
     .proof-toast-review {
       background: #007AFF;

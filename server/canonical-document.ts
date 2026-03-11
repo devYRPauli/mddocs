@@ -25,6 +25,14 @@ import {
   stripEphemeralCollabSpans,
 } from './collab.js';
 import { getHeadlessMilkdownParser, parseMarkdownWithHtmlFallback, serializeMarkdown } from './milkdown-headless.js';
+import {
+  buildProofSpanReplacementMap,
+  stripAllProofSpanTagsWithReplacements,
+} from './proof-span-strip.js';
+import {
+  extractAuthoredMarksFromDoc,
+  synchronizeAuthoredMarks,
+} from './proof-authored-mark-sync.js';
 import { refreshSnapshotForSlug } from './snapshot.js';
 import { getActiveCollabClientCount } from './ws.js';
 
@@ -404,7 +412,9 @@ export async function mutateCanonicalDocument(args: CanonicalMutationArgs): Prom
     authoritativeMarkdown = stripEphemeralCollabSpans(derivedCurrent.markdown);
     authoritativeMarks = stripAuthoredMarks(derivedCurrent.marks);
   }
-  const effectiveNextMarks = Object.keys(nextMarks).length > 0 ? nextMarks : authoritativeMarks;
+  const nextMarksBase = Object.keys(nextMarks).length > 0 ? nextMarks : authoritativeMarks;
+  const authoredMarks = extractAuthoredMarksFromDoc(parsedNext.doc as ProseMirrorNode, parser.schema as Schema);
+  const effectiveNextMarks = synchronizeAuthoredMarks(nextMarksBase, authoredMarks);
 
   try {
     if (liveRequired) {
@@ -429,7 +439,15 @@ export async function mutateCanonicalDocument(args: CanonicalMutationArgs): Prom
     }
 
     if (args.guardPathologicalGrowth !== false) {
-      const safety = evaluateProjectionSafety(authoritativeMarkdown, sanitizedMarkdown, ydoc);
+      const guardBaselineMarkdown = stripAllProofSpanTagsWithReplacements(
+        authoritativeMarkdown,
+        buildProofSpanReplacementMap(authoritativeMarks),
+      );
+      const guardCandidateMarkdown = stripAllProofSpanTagsWithReplacements(
+        sanitizedMarkdown,
+        buildProofSpanReplacementMap(effectiveNextMarks),
+      );
+      const safety = evaluateProjectionSafety(guardBaselineMarkdown, guardCandidateMarkdown, ydoc);
       if (!safety.safe && (
         safety.reason === 'max_chars_exceeded'
         || safety.reason === 'growth_multiplier_exceeded'
@@ -442,7 +460,7 @@ export async function mutateCanonicalDocument(args: CanonicalMutationArgs): Prom
           error: 'Mutation blocked by projection growth guard',
         };
       }
-      if (detectPathologicalProjectionRepeat(authoritativeMarkdown, sanitizedMarkdown) > 0) {
+      if (detectPathologicalProjectionRepeat(guardBaselineMarkdown, guardCandidateMarkdown) > 0) {
         return {
           ok: false,
           status: 422,

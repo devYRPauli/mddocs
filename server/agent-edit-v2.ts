@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'crypto';
 import type { Node as ProseMirrorNode, Schema } from '@milkdown/prose/model';
 import {
   addDocumentEvent,
+  bumpDocumentAccessEpoch,
   getDocumentBySlug,
   listLiveDocumentBlocks,
   rebuildDocumentBlocks,
@@ -9,7 +10,17 @@ import {
 } from './db.js';
 import { deriveProjectionFromCanonicalDoc, mutateCanonicalDocument } from './canonical-document.js';
 import { buildAgentSnapshot } from './agent-snapshot.js';
-import { getCanonicalReadableDocumentSync, isCanonicalReadMutationReady, loadCanonicalYDoc, stripEphemeralCollabSpans } from './collab.js';
+import {
+  acquireRewriteLock,
+  applyCanonicalDocumentToCollabWithVerification,
+  getCanonicalReadableDocumentSync,
+  getLoadedCollabMarkdown,
+  invalidateCollabDocument,
+  invalidateCollabDocumentAndWait,
+  isCanonicalReadMutationReady,
+  loadCanonicalYDoc,
+  stripEphemeralCollabSpans,
+} from './collab.js';
 import {
   getHeadlessMilkdownParser,
   parseMarkdownWithHtmlFallback,
@@ -20,6 +31,7 @@ import {
 } from './milkdown-headless.js';
 import { getActiveCollabClientCount } from './ws.js';
 import { canonicalizeStoredMarks, type StoredMark } from '../src/formats/marks.js';
+import { refreshSnapshotForSlug } from './snapshot.js';
 
 export type AgentEditV2Result = {
   status: number;
@@ -79,6 +91,11 @@ type ReferencedSnapshotRef = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = value ? Number.parseInt(value, 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function projectionStaleEditResult(): AgentEditV2Result {
@@ -452,6 +469,131 @@ function parseCanonicalMarks(raw: string): Record<string, unknown> {
   return {};
 }
 
+const EDIT_V2_COLLAB_TIMEOUT_MS = parsePositiveInt(process.env.AGENT_EDIT_V2_COLLAB_TIMEOUT_MS, 3000);
+const EDIT_V2_COLLAB_STABILITY_MS = parsePositiveInt(process.env.AGENT_EDIT_V2_COLLAB_STABILITY_MS, 2500);
+const EDIT_V2_COLLAB_STABILITY_SAMPLE_MS = parsePositiveInt(process.env.AGENT_EDIT_V2_COLLAB_STABILITY_SAMPLE_MS, 100);
+const EDIT_V2_BARRIER_TIMEOUT_MS = parsePositiveInt(process.env.AGENT_EDIT_V2_BARRIER_TIMEOUT_MS, 5000);
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function verifyLoadedCollabMarkdownStable(
+  slug: string,
+  expectedMarkdown: string,
+  stabilityMs: number,
+): Promise<boolean> {
+  if (stabilityMs <= 0) return true;
+  const deadline = Date.now() + stabilityMs;
+  const sampleMs = Math.max(25, EDIT_V2_COLLAB_STABILITY_SAMPLE_MS);
+  while (Date.now() <= deadline) {
+    const current = getLoadedCollabMarkdown(slug);
+    if (current === null) return true;
+    if (current !== expectedMarkdown) return false;
+    await sleep(sampleMs);
+  }
+  return true;
+}
+
+async function prepareEditV2CollabBarrier(slug: string): Promise<void> {
+  acquireRewriteLock(slug);
+  bumpDocumentAccessEpoch(slug);
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  try {
+    await Promise.race([
+      invalidateCollabDocumentAndWait(slug),
+      new Promise<void>((_resolve, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(`edit.v2 collab barrier timed out after ${EDIT_V2_BARRIER_TIMEOUT_MS}ms`)), EDIT_V2_BARRIER_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+async function finalizeAgentEditV2Response(
+  slug: string,
+  by: string,
+  markdown: string,
+  marks: Record<string, unknown>,
+  revision: number,
+): Promise<AgentEditV2Result> {
+  let collabResult = await applyCanonicalDocumentToCollabWithVerification(slug, {
+    markdown,
+    marks,
+    source: by,
+  }, EDIT_V2_COLLAB_TIMEOUT_MS);
+
+  if (collabResult.confirmed) {
+    const stable = await verifyLoadedCollabMarkdownStable(slug, markdown, EDIT_V2_COLLAB_STABILITY_MS);
+    if (!stable) {
+      collabResult = {
+        ...collabResult,
+        confirmed: false,
+        reason: 'stability_regressed',
+      };
+    }
+  }
+
+  if (!collabResult.confirmed) {
+    try {
+      await prepareEditV2CollabBarrier(slug);
+      const refreshed = getDocumentBySlug(slug);
+      if (!refreshed) {
+        collabResult = {
+          ...collabResult,
+          confirmed: false,
+          reason: 'missing_document',
+        };
+      } else {
+        const refreshedMarks = parseCanonicalMarks(refreshed.marks);
+        collabResult = await applyCanonicalDocumentToCollabWithVerification(slug, {
+          markdown: refreshed.markdown,
+          marks: refreshedMarks,
+          source: `${by}-fallback`,
+        }, EDIT_V2_COLLAB_TIMEOUT_MS);
+        if (collabResult.confirmed) {
+          const stable = await verifyLoadedCollabMarkdownStable(slug, refreshed.markdown, EDIT_V2_COLLAB_STABILITY_MS);
+          if (!stable) {
+            collabResult = {
+              ...collabResult,
+              confirmed: false,
+              reason: 'stability_regressed',
+            };
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('[agent-edit-v2] Failed to apply collab barrier fallback after verification drift', { slug, error });
+      collabResult = {
+        ...collabResult,
+        confirmed: false,
+        reason: 'fallback_barrier_failed',
+      };
+    }
+    if (!collabResult.confirmed) {
+      invalidateCollabDocument(slug);
+    }
+  }
+
+  const snapshot = await buildSnapshot(slug);
+  const status = collabResult.confirmed ? 200 : 202;
+
+  return {
+    status,
+    body: {
+      success: true,
+      slug,
+      revision,
+      collab: {
+        status: collabResult.confirmed ? 'confirmed' : 'pending',
+        reason: collabResult.confirmed ? undefined : collabResult.reason ?? 'sync_timeout',
+        yStateVersion: collabResult.yStateVersion,
+      },
+      snapshot,
+    },
+  };
+}
 export async function applyAgentEditV2(
   slug: string,
   body: unknown,
@@ -663,6 +805,10 @@ export async function applyAgentEditV2(
 
   const nextMarkdown = await serializeMarkdown(nextDoc);
   const marks = authoritativeMarks;
+  if (nextMarkdown === doc.markdown) {
+    await liveHandle?.cleanup?.();
+    return finalizeAgentEditV2Response(slug, by, doc.markdown, marks, doc.revision);
+  }
   const mutation = await mutateCanonicalDocument({
     slug,
     nextMarkdown,
@@ -689,20 +835,7 @@ export async function applyAgentEditV2(
   }
 
   addDocumentEvent(slug, 'agent.edit.v2', { by, operations: normalized.operations }, by);
-  const snapshot = await buildSnapshot(slug);
+  refreshSnapshotForSlug(slug);
   await liveHandle?.cleanup?.();
-
-  return {
-    status: 200,
-    body: {
-      success: true,
-      slug,
-      revision: mutation.document.revision,
-      collab: {
-        status: 'confirmed',
-        yStateVersion: mutation.yStateVersion,
-      },
-      snapshot,
-    },
-  };
+  return finalizeAgentEditV2Response(slug, by, nextMarkdown, marks, mutation.document.revision);
 }

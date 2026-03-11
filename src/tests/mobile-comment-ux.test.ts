@@ -120,6 +120,17 @@ test('explicit auto mode still enables V2 on <=900px fallback width', () => {
   });
 });
 
+test('mobile strip uses defensive bounding-rect guards', () => {
+  const source = readFileSync(
+    path.resolve(process.cwd(), 'src', 'editor', 'plugins', 'mark-popover.ts'),
+    'utf8',
+  );
+  assert(
+    source.includes('typeof this.strip.getBoundingClientRect !== \'function\''),
+    'Expected defensive bounding rect guards for the mobile comment strip',
+  );
+});
+
 test('viewport offset helpers account for visual viewport height + offset', () => {
   const layoutHeight = 812;
   const vv = { height: 520, offsetTop: 0 };
@@ -180,6 +191,8 @@ test('source includes selection caching + pointer/touch handlers + arrow trigger
   assert(popover.includes('private scheduleSelectionPolling(durationMs: number = MOBILE_SELECTION_POLL_WINDOW_MS): void'), 'Popover should define short-lived mobile selection polling');
   assert(popover.includes('private handleEditorTouchEnd = () => {'), 'Popover should start selection polling from touchend on mobile');
   assert(popover.includes('private getDomSelectionRangeFromRects(range: Range)'), 'Popover should fallback to rect-based range mapping when posAtDOM fails on iOS');
+  assert(popover.includes("typeof range.getBoundingClientRect !== 'function'"), 'Selection rect helper should guard non-range selections');
+  assert(popover.includes("typeof range.getClientRects !== 'function'"), 'Rect-based selection fallback should guard non-range selections');
   assert(popover.includes('const mobileRange = mobile ? (domRange ?? pmRange) : null;'), 'Selectionchange should fallback to PM selection when DOM selection mapping fails');
   assert(popover.includes('const withinEditor = mobile\n        ? (Boolean(mobileRange) || hasDomSelectionInsideEditor)'), 'Selectionchange should treat in-editor DOM selection as live even before range mapping succeeds');
   assert(popover.includes('if (this.blurPendingTimer && !mobileRange) return;'), 'Blur-pending guard should only bail when no fallback selection exists');
@@ -252,7 +265,7 @@ test('source includes selection caching + pointer/touch handlers + arrow trigger
   assert(namePrompt.includes('if (shouldAutofocusInput()) {'), 'Expected name prompt autofocus to be gated');
   assert(namePrompt.includes("input.autocomplete = 'name';"), 'Expected name prompt to opt into name autocomplete');
   assert(namePrompt.includes('min-height: 44px;'), 'Expected name prompt actions to meet 44px touch targets');
-  assert(namePrompt.includes('Continue as anonymous'), 'Expected explicit anonymous fallback copy');
+  assert(namePrompt.includes('Continue anonymously'), 'Expected explicit anonymous fallback copy');
 });
 
 if (failed > 0) {

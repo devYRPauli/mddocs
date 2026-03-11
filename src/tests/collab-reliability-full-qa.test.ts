@@ -9,6 +9,7 @@ import { HocuspocusProvider } from '@hocuspocus/provider';
 import type { AddressInfo } from 'node:net';
 import { prosemirrorToYXmlFragment } from 'y-prosemirror';
 import { getHeadlessMilkdownParser } from '../../server/milkdown-headless.js';
+import { replaceLiveMarkdown } from '../shared/live-markdown.ts';
 
 const CLIENT_HEADERS = {
   'X-Proof-Client-Version': '0.31.0',
@@ -189,17 +190,6 @@ function stripAuthoredSpanTags(markdown: string): string {
   return result;
 }
 
-function replaceLiveMarkdown(ydoc: Y.Doc, markdown: string, parser: Awaited<ReturnType<typeof getHeadlessMilkdownParser>>, origin: string): void {
-  ydoc.transact(() => {
-    const text = ydoc.getText('markdown');
-    if (text.length > 0) text.delete(0, text.length);
-    text.insert(0, markdown);
-    const fragment = ydoc.getXmlFragment('prosemirror');
-    if (fragment.length > 0) fragment.delete(0, fragment.length);
-    prosemirrorToYXmlFragment(parser.parseMarkdown(markdown) as any, fragment as any);
-  }, origin);
-}
-
 async function fetchAgentSnapshot(
   httpBase: string,
   slug: string,
@@ -344,6 +334,15 @@ async function run(): Promise<void> {
       }),
     });
     const created = await mustJson<ShareCreateResponse>(createRes);
+    const createdRow = db.getDocumentBySlug(created.slug);
+    const createdProjection = db.getProjectedDocumentBySlug(created.slug);
+    assert(Boolean(createdRow), 'Expected created collab document row');
+    assert((createdRow?.y_state_version ?? 0) > 0, `Expected create route to seed canonical Yjs baseline, got ${String(createdRow?.y_state_version ?? 0)}`);
+    assert(db.getLatestYSnapshot(created.slug) != null, 'Expected create route to persist Yjs snapshot');
+    assert(
+      (createdProjection?.projection_y_state_version ?? 0) === (createdRow?.y_state_version ?? 0),
+      `Expected projection y_state_version to match canonical row after create, got ${String(createdProjection?.projection_y_state_version ?? 0)} vs ${String(createdRow?.y_state_version ?? 0)}`,
+    );
 
     // Connect two live clients (concurrent editing).
     const collabA = await connectCollab(httpBase, created.slug, created.ownerSecret);

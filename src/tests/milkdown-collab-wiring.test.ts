@@ -8,6 +8,7 @@ function assert(condition: boolean, message: string): void {
 function run(): void {
   const editorSource = readFileSync(path.resolve(process.cwd(), 'src/editor/index.ts'), 'utf8');
   const filterSource = readFileSync(path.resolve(process.cwd(), 'src/editor/plugins/share-content-filter.ts'), 'utf8');
+  const libraryGuardSource = readFileSync(path.resolve(process.cwd(), 'src/editor/plugins/library-content-guard.ts'), 'utf8');
   const collabClientSource = readFileSync(path.resolve(process.cwd(), 'src/bridge/collab-client.ts'), 'utf8');
 
   assert(
@@ -66,19 +67,27 @@ function run(): void {
   );
   assert(
     editorSource.includes('refreshCollabSessionAndReconnect(preserveLocalState: boolean)')
-      && editorSource.includes("collabClient.terminalCloseReason === 'permission-denied'")
-      && editorSource.includes('void this.refreshCollabSessionAndReconnect(false);')
+      && editorSource.includes("collabClient.lastAuthenticationFailureReason")
+      && editorSource.includes("this.scheduleCollabRecovery('auth-failure'")
+      && editorSource.includes("this.scheduleCollabRecovery('expiring-session'")
+      && editorSource.includes("this.scheduleCollabRecovery('stalled-collab'")
       && editorSource.includes('maybeRecoverStalledCollab()')
       && editorSource.includes('if (this.collabUnhealthySinceMs === null) return;')
       && editorSource.includes('this.collabRecoveryDelayMs')
+      && editorSource.includes('this.collabRecoveryDebounceMs')
+      && editorSource.includes('this.collabTypingQuietWindowMs')
+      && editorSource.includes('private isTypingSessionProtected(): boolean {')
+      && editorSource.includes('private scheduleCollabRecovery(')
+      && editorSource.includes('private async runScheduledCollabRecovery(): Promise<void> {')
       && editorSource.includes('private shouldPreservePendingLocalCollabState(): boolean {')
       && editorSource.includes('private shouldDeferExpiringCollabRefresh(now: number): boolean {')
       && editorSource.includes('this.collabPendingLocalUpdates = status.pendingLocalUpdates;')
       && editorSource.includes("if (this.collabConnectionStatus === 'connected' && this.collabIsSynced) return;")
       && editorSource.includes('if (this.shouldDeferExpiringCollabRefresh(now)) return;')
       && editorSource.includes('this.pendingCollabTemplateMarkdown = this.shouldAllowCollabTemplateSeed(refreshed.session)')
-      && editorSource.includes('await this.refreshCollabSessionAndReconnect(this.shouldPreservePendingLocalCollabState());'),
-    'Expected stale-session close handling to force immediate collab session refresh while healthy sessions avoid proactive refreshes, reconnect template replay stays disabled for non-fresh snapshots, and expiring-session recovery only runs after local-edit deferral checks',
+      && editorSource.includes('const requiresHardReconnect = collabClient.requiresHardReconnect(refreshed.session);')
+      && editorSource.includes('const softRefreshed = collabClient.softRefreshSession(refreshed.session);'),
+    'Expected collab recovery to queue reconnects behind a typing-protection gate and prefer soft session refresh before hard reconnect',
   );
   assert(
     editorSource.includes('const incomingMarks = (marks && typeof marks === \'object\' && !Array.isArray(marks))')
@@ -117,8 +126,10 @@ function run(): void {
       && collabClientSource.includes("if (type === 'document.updated') {")
       && collabClientSource.includes('const canPreserveLocalState = preserveLocalState')
       && collabClientSource.includes('&& this.canPersistDurableUpdates(session.role)')
-      && collabClientSource.includes('&& this.hasPendingLocalStateForReconnect();'),
-    'Expected collab client stateless handler to parse payload wrappers and only preserve reconnect state for writable roles with pending local state',
+      && collabClientSource.includes('&& this.hasPendingLocalStateForReconnect();')
+      && collabClientSource.includes('requiresHardReconnect(session: CollabSessionInfo): boolean {')
+      && collabClientSource.includes('softRefreshSession(session: CollabSessionInfo): boolean {'),
+    'Expected collab client stateless handler to parse payload wrappers and the runtime to distinguish soft session refreshes from hard reconnects',
   );
 
   assert(
@@ -134,10 +145,39 @@ function run(): void {
     'Expected suggestions interceptor to skip Yjs-origin transactions while local transaction interception still records local mutation activity',
   );
   assert(
+    editorSource.includes('const hasWritableSession = this.collabEnabled && this.collabCanEdit;')
+      && editorSource.includes('this.hasCompletedInitialCollabHydration')
+      && editorSource.includes('const allowLocalEdits = hasWritableSession')
+      && !editorSource.includes('const baseAllowLocalEdits = this.collabEnabled\n      && this.collabCanEdit\n      && this.collabConnectionStatus === \'connected\''),
+    'Expected writable hydrated sessions to stay editable during transient reconnects instead of keying editability directly off connection health',
+  );
+  assert(
     filterSource.includes("key.startsWith('y-sync')")
       && filterSource.includes('const ySyncMeta = tr.getMeta(ySyncPluginKey);')
       && filterSource.includes('if (ySyncMeta !== undefined) return true;'),
     'Expected share content filter to allow Yjs-origin transactions (including initial hydration)',
+  );
+  assert(
+    editorSource.includes('.use(libraryContentGuardPlugin)')
+      && editorSource.includes('this.setLibraryContentGuardEnabled(isLibraryDocument && allowLocalEdits);')
+      && editorSource.includes('private createShareBannerAuthCluster(): HTMLElement | null')
+      && editorSource.includes('includeLibraryLink = false')
+      && editorSource.includes("btn.setAttribute('aria-label', compactIcon ? 'More options' : 'Account menu');")
+      && editorSource.includes("makeMenuButton('Log out'")
+      && editorSource.includes("fetch('/api/auth/dashboard/logout'"),
+    'Expected editor to register library guard and show account/logout controls in the share banner',
+  );
+  assert(
+    libraryGuardSource.includes("const NOTES_SECTION_LABELS = new Set(['notes & pins', 'notes and pins'])")
+      && libraryGuardSource.includes('function findNotesSectionRange(doc: ProseMirrorNode): { from: number; to: number } | null')
+      && libraryGuardSource.includes('function selectionWithinAllowedRange(view: EditorView): boolean')
+      && libraryGuardSource.includes('handleTextInput(view) {')
+      && libraryGuardSource.includes('handlePaste(view, event) {')
+      && libraryGuardSource.includes('beforeinput(view, event) {')
+      && libraryGuardSource.includes("if (key.startsWith('y-sync')) return true;")
+      && libraryGuardSource.includes('const ySyncMeta = tr.getMeta(ySyncPluginKey);')
+      && libraryGuardSource.includes('if (stepFrom < allowedRange.from || stepTo > allowedRange.to) {'),
+    'Expected library content guard to restrict local edits to Notes & Pins while allowing Yjs sync updates',
   );
 
   const removedHelpers = [

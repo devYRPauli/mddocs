@@ -196,6 +196,32 @@ async function run(): Promise<void> {
     await sleep(100);
     assert(!hasPresenceWithName('Claude'), 'Expected state read without explicit identity to avoid auto-presence');
 
+    const clawStateRes = await fetch(`${httpBase}/api/agent/${created.slug}/state`, {
+      headers: {
+        ...CLIENT_HEADERS,
+        'x-share-token': created.ownerSecret,
+        'user-agent': 'Claw-Test-Agent/1.0',
+      },
+    });
+    assert(clawStateRes.ok, `Expected Claw state probe to succeed, got HTTP ${clawStateRes.status}`);
+    await waitFor(() => {
+      let found = false;
+      presenceMap.forEach((entry: any) => {
+        if (typeof entry?.id === 'string' && entry.id.startsWith('ai:auto-') && entry?.name === 'AI collaborator') {
+          found = true;
+        }
+      });
+      return found;
+    }, DEFAULT_TIMEOUT_MS, 'provisional auto presence appears');
+
+    let provisionalAutoId: string | null = null;
+    presenceMap.forEach((entry: any, key: string) => {
+      if (typeof key === 'string' && key.startsWith('ai:auto-') && entry?.name === 'AI collaborator') {
+        provisionalAutoId = key;
+      }
+    });
+    assert(typeof provisionalAutoId === 'string' && provisionalAutoId.length > 0, 'Expected provisional auto agent id');
+
     const appendText = `APPENDED-${randomUUID()}`;
     const editRes = await fetch(`${httpBase}/api/agent/${created.slug}/edit/v2`, {
       method: 'POST',
@@ -204,6 +230,7 @@ async function run(): Promise<void> {
         'Content-Type': 'application/json',
         'x-share-token': created.ownerSecret,
         'x-agent-id': 'r2c2',
+        'user-agent': 'Claw-Test-Agent/1.0',
       },
       body: JSON.stringify({
         by: 'ai:r2c2',
@@ -221,6 +248,12 @@ async function run(): Promise<void> {
     const presence = presenceMap.get('ai:r2c2') as any;
     assert(presence?.name === 'R2C2', 'Expected presence name to be R2C2');
     assert(presence?.status === 'editing', 'Expected presence status to be editing');
+    assert(!presenceMap.get(provisionalAutoId!), 'Expected provisional auto presence to be removed after named agent joins');
+    let r2c2Count = 0;
+    presenceMap.forEach((entry: any) => {
+      if (entry?.name === 'R2C2') r2c2Count += 1;
+    });
+    assert(r2c2Count === 1, `Expected exactly one R2C2 presence entry, got ${r2c2Count}`);
 
     const agentCommentRes = await fetch(`${httpBase}/api/agent/${created.slug}/ops`, {
       method: 'POST',
@@ -242,6 +275,7 @@ async function run(): Promise<void> {
     await waitFor(() => Boolean(cursorMap.get('ai:r2c2')), DEFAULT_TIMEOUT_MS, 'cursor hint appears');
     const hint = cursorMap.get('ai:r2c2') as any;
     assert(typeof hint?.quote === 'string' && hint.quote.includes(appendText), 'Expected cursor hint quote to include appended text');
+    assert(!cursorMap.get(provisionalAutoId!), 'Expected provisional auto cursor to stay removed');
 
     const disconnectRes = await fetch(`${httpBase}/api/agent/${created.slug}/presence/disconnect`, {
       method: 'POST',

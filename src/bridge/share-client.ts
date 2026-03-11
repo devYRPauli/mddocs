@@ -26,6 +26,7 @@ export interface CollabSessionInfo {
   slug: string;
   role: ShareRole;
   shareState: ShareState;
+  accessEpoch: number;
   syncProtocol: 'pm-yjs-v1';
   collabWsUrl: string;
   token: string;
@@ -189,6 +190,14 @@ export class ShareClient {
     return this.slug;
   }
 
+  getTokenizedWebUrl(options?: { token?: string; origin?: string }): string | null {
+    if (!this.slug) return null;
+    const token = options?.token?.trim() || this.shareToken;
+    if (!token) return null;
+    const origin = options?.origin?.trim() || this.apiOriginOverride || window.location.origin;
+    return `${origin}/d/${encodeURIComponent(this.slug)}?token=${encodeURIComponent(token)}`;
+  }
+
   getClientId(): string | null {
     return this.clientId;
   }
@@ -283,6 +292,8 @@ export class ShareClient {
       && candidate.slug.length > 0
       && this.isShareRole(candidate.role)
       && this.isShareState(candidate.shareState)
+      && typeof candidate.accessEpoch === 'number'
+      && Number.isFinite(candidate.accessEpoch)
       && candidate.syncProtocol === 'pm-yjs-v1'
       && typeof candidate.collabWsUrl === 'string'
       && candidate.collabWsUrl.length > 0

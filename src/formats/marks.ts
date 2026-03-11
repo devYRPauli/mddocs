@@ -24,6 +24,7 @@ const KNOWN_COLORS: Record<string, string> = {
   // Origin/authorship
   human: '#6EE7B7',  // Soft mint
   ai: '#A5B4FC',     // Soft lavender
+  system: '#93C5FD', // Soft sky blue
 
   // Mark kinds (for future use in sidebar counts)
   approved: '#2DD4BF',   // Teal (distinct from human)
@@ -1198,6 +1199,13 @@ export function isHuman(actor: string): boolean {
  */
 export function isAI(actor: string): boolean {
   return actor.startsWith('ai:');
+}
+
+/**
+ * Check if actor is system
+ */
+export function isSystem(actor: string): boolean {
+  return actor.startsWith('system:');
 }
 
 /**

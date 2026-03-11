@@ -64,7 +64,7 @@ export function promptForName(): Promise<string> {
     wordmark.style.cssText = 'font-size: 15px; font-weight: 600; color: #333; letter-spacing: -0.3px; margin-bottom: 20px;';
 
     const title = document.createElement('h2');
-    title.textContent = 'What should we call you?';
+    title.textContent = 'Choose a display name';
     title.style.cssText = 'margin: 0 0 6px; font-size: 18px; font-weight: 600; color: #111;';
 
     const subtitle = document.createElement('p');
@@ -93,7 +93,7 @@ export function promptForName(): Promise<string> {
 
     const button = document.createElement('button');
     button.dataset.proofNamePrompt = 'submit';
-    button.textContent = 'Start writing';
+    button.textContent = 'Continue';
     button.style.cssText = `
       width: 100%; margin-top: 12px; min-height: 44px; padding: 10px 14px;
       background: #111; color: white; border: none;
@@ -109,8 +109,8 @@ export function promptForName(): Promise<string> {
 
     const skipLink = document.createElement('button');
     skipLink.dataset.proofNamePrompt = 'anonymous';
-    skipLink.textContent = 'Continue as anonymous';
-    skipLink.setAttribute('aria-label', 'Continue as anonymous');
+    skipLink.textContent = 'Continue anonymously';
+    skipLink.setAttribute('aria-label', 'Continue anonymously');
     skipLink.style.cssText = `
       width: 100%; margin-top: 8px; min-height: 44px; padding: 10px 14px;
       background: #f5f5f5; color: #444; border: 1px solid #e5e5e5;

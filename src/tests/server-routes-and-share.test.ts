@@ -971,14 +971,14 @@ async function runRoutePayloadValidationTests(): Promise<void> {
       assertIncludes(body, '<meta property="og:title"', 'Expected og:title for paused share');
       assertIncludes(
         body,
-        'content="Proof document unavailable"',
+        'content="Document unavailable"',
         'Expected generic unavailable title in metadata',
       );
       assert(
         !body.includes('Paused doc'),
         'Expected paused share HTML to avoid leaking document title',
       );
-      assertIncludes(body, 'content="This shared Proof document is temporarily unavailable."', 'Expected generic unavailable metadata');
+      assertIncludes(body, 'content="The shared Proof document is temporarily unavailable"', 'Expected generic unavailable metadata');
       assert(!body.includes('This should not leak while paused.'), 'Expected paused share HTML to avoid content excerpt');
     });
 
@@ -991,7 +991,7 @@ async function runRoutePayloadValidationTests(): Promise<void> {
           shareState: 'PAUSED',
         },
       });
-      assertEqual(unavailableModel.title, 'Proof document unavailable', 'Expected generic title for unavailable model');
+      assertEqual(unavailableModel.title, 'Document unavailable', 'Expected generic title for unavailable model');
       assertEqual(unavailableModel.displayUrl, null, 'Expected unavailable OG card to hide canonical slug chip');
       assert(
         !unavailableModel.imageAlt.includes('Top Secret'),
@@ -1018,7 +1018,7 @@ async function runRoutePayloadValidationTests(): Promise<void> {
 
     await test('D2: long OG titles shrink to preserve description space', async () => {
       const shortLayout = resolveOgTextLayout('Monday Product Sync');
-      const longLayout = resolveOgTextLayout('How We Want the Every Bundle to Feel When Someone First Realizes It Can Actually Do Computer Errands');
+      const longLayout = resolveOgTextLayout('How We Want the Every Bundle to Feel When Someone First Realizes It Can Actually Do Computer Errands Across the Entire Writing Stack Including Review, Rewrite, Comments, Provenance, and Collaboration');
       assert(longLayout.titleFontSize < shortLayout.titleFontSize, 'Expected long titles to use a smaller OG title size');
       assert(longLayout.excerptMaxLength < shortLayout.excerptMaxLength, 'Expected long titles to reserve more room for the description/footer');
       assert(longLayout.contentGap !== shortLayout.contentGap, 'Expected long titles to tighten title/description spacing');

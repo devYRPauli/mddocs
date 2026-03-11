@@ -71,6 +71,11 @@ function run(): void {
     'Expected /documents/:slug/ops rewrite.apply to enforce a collab rewrite barrier',
   );
   assert(
+    routesSource.includes('Route-level reapplication from the DB can replay stale markdown')
+      && !routesSource.includes("source: 'rest-ops'"),
+    'Expected /documents/:slug/ops to avoid broad DB reapply after engine-backed mutations',
+  );
+  assert(
     agentRoutesSource.includes("if (op === 'rewrite.apply') {")
       && agentRoutesSource.includes('await prepareRewriteCollabBarrier(slug);')
       && agentRoutesSource.includes("agentRoutes.post('/:slug/rewrite', async"),
@@ -104,9 +109,9 @@ function run(): void {
     'Expected bridge /rewrite to enforce a collab rewrite barrier',
   );
   assert(
-    bridgeSource.includes('await applyCanonicalDocumentToCollab(slug, applyOptions);')
-      || bridgeSource.includes('await applyCanonicalDocumentToCollab(slug, {'),
-    'Expected server-executed bridge mutations to apply canonical state into collab runtime',
+    !bridgeSource.includes('await applyCanonicalDocumentToCollab(slug, applyOptions);')
+      && !bridgeSource.includes('const applyOptions = {'),
+    'Expected server-executed bridge mutations to avoid broad DB reapply into live collab rooms',
   );
   assert(
     /applyCanonicalDocumentToCollab\(slug[\s\S]*?\.catch\(\(error\)\s*=>\s*\{[\s\S]*?invalidateCollabDocument\(slug\);/.test(documentEngineSource),
@@ -122,8 +127,13 @@ function run(): void {
     'Expected agent rewrite flows to execute through canonical rewrite path',
   );
   assert(
-    /agentRoutes\.post\('\/:slug\/edit', async[\s\S]*?notifyCollabMutation\([\s\S]*?\{\s*verify:\s*true,\s*source:\s*by[\s\S]*stabilityMs:\s*EDIT_COLLAB_STABILITY_MS[\s\S]*fallbackBarrier:\s*true[\s\S]*\}/.test(agentRoutesSource),
-    'Expected /agent/:slug/edit to require verified collab propagation',
+    /agentRoutes\.post\('\/:slug\/edit', async[\s\S]*?notifyCollabMutation\([\s\S]*?\{\s*verify:\s*true,\s*source:\s*by[\s\S]*stabilityMs:\s*EDIT_COLLAB_STABILITY_MS[\s\S]*fallbackBarrier:\s*true[\s\S]*apply:\s*false[\s\S]*\}/.test(agentRoutesSource),
+    'Expected /agent/:slug/edit to verify collab propagation without replaying DB state',
+  );
+  assert(
+    agentRoutesSource.includes('{ verify: false, apply: false }')
+      && agentRoutesSource.includes("{ apply: false }"),
+    'Expected non-rewrite agent mutation routes to update presence/verification without broad DB reapply',
   );
   assert(
     agentRoutesSource.includes('verifyCanonicalDocumentStable(')
@@ -133,8 +143,11 @@ function run(): void {
   );
   assert(
     agentEditV2Source.includes('strictLiveDoc: true')
-      && agentEditV2Source.includes("status: 'confirmed'")
-      && agentEditV2Source.includes('snapshot = await buildSnapshot(slug);'),
+      && (
+        agentEditV2Source.includes("status: 'confirmed'")
+        || agentEditV2Source.includes("status: collabResult.confirmed ? 'confirmed' : 'pending'")
+      )
+      && agentEditV2Source.includes('const snapshot = await buildSnapshot(slug);'),
     'Expected /agent/:slug/edit/v2 to require strict live canonical mutation and return confirmed collab state',
   );
   assert(
@@ -191,6 +204,14 @@ function run(): void {
   assert(
     authReadOnlyAssignments >= 2,
     'Expected onAuthenticate hooks to enforce readOnly from canWrite in collab runtimes',
+  );
+  assert(
+    collabSource.includes('accessEpoch: number;')
+      && collabSource.includes('accessEpoch: doc.access_epoch,')
+      && shareClientSource.includes('accessEpoch: number;')
+      && shareClientSource.includes('typeof candidate.accessEpoch === \'number\'')
+      && shareClientSource.includes('Number.isFinite(candidate.accessEpoch)'),
+    'Expected collab session contracts to require a numeric accessEpoch on both server and client',
   );
   assert(
     collabSource.includes("syncProtocol: 'pm-yjs-v1';"),

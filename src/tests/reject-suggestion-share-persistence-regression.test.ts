@@ -24,7 +24,7 @@ function run(): void {
       && markRejectBlock.includes('this.lastReceivedServerMarks = { ...metadata };')
       && markRejectBlock.includes('this.initialMarksSynced = true;')
       && markRejectBlock.includes('const actor = getCurrentActor();')
-      && markRejectBlock.includes('void shareClient.rejectSuggestion(markId, actor).then((result) => {')
+      && markRejectBlock.includes('void shareClient.rejectSuggestion(markId, actor).then(async (result) => {')
       && markRejectBlock.includes('this.lastReceivedServerMarks = { ...serverMarks };')
       && markRejectBlock.includes('this.initialMarksSynced = true;'),
     'Expected markReject to snapshot the local cleared metadata and then refresh it from the explicit share reject mutation',

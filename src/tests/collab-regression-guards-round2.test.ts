@@ -7,13 +7,21 @@ function assert(condition: boolean, message: string): void {
 
 function run(): void {
   const editorPath = path.resolve(process.cwd(), 'src', 'editor', 'index.ts');
+  const welcomeCardPath = path.resolve(process.cwd(), 'src', 'ui', 'welcome-card.ts');
   const editorSource = readFileSync(editorPath, 'utf8');
+  const welcomeCardSource = readFileSync(welcomeCardPath, 'utf8');
   const collabCursorSource = readFileSync(
     path.resolve(process.cwd(), 'src', 'editor', 'plugins', 'collab-cursors.ts'),
     'utf8',
   );
   const marksSource = readFileSync(path.resolve(process.cwd(), 'src', 'editor', 'plugins', 'marks.ts'), 'utf8');
   const bridgeSource = readFileSync(path.resolve(process.cwd(), 'Proof', 'Bridge', 'AgentBridgeServer.swift'), 'utf8');
+  const cursorInstallStart = editorSource.indexOf('const hadFocusBeforeInstall = view.hasFocus();');
+  const cursorInstallEnd = editorSource.indexOf("console.warn('[share] failed to install yCursor plugin'", cursorInstallStart);
+  const cursorInstallSnippet = cursorInstallStart >= 0 && cursorInstallEnd > cursorInstallStart
+    ? editorSource.slice(cursorInstallStart, cursorInstallEnd)
+    : '';
+
   assert(
     editorSource.includes('private createAgentMenuButton('),
     'Expected dedicated agent menu button in share banner',
@@ -27,6 +35,39 @@ function run(): void {
     'Expected split connected agent derivation',
   );
   assert(
+    editorSource.includes('const expectedCursorKey = (yCursorPluginKey as { key?: unknown } | null)?.key;'),
+    'Expected yCursor install path to keep robust plugin-key detection',
+  );
+  assert(
+    editorSource.includes('const maxAttempts = 600;'),
+    'Expected extended yCursor install retries for slow mapping readiness',
+  );
+  assert(
+    editorSource.includes('const hadFocusBeforeInstall = view.hasFocus();'),
+    'Expected cursor-plugin install to capture focus state before reconfigure',
+  );
+  assert(
+    editorSource.includes('view.dispatch(view.state.tr.setSelection(restoreSelection).setMeta(\'addToHistory\', false));'),
+    'Expected cursor-plugin install to restore selection after plugin reconfigure',
+  );
+  assert(
+    cursorInstallSnippet.includes('if (!view.hasFocus()) return;')
+      && cursorInstallSnippet.includes("if ((view as EditorView & { composing?: boolean }).composing === true) return;")
+      && !cursorInstallSnippet.includes('view.focus();'),
+    'Expected cursor-plugin install path to restore selection without force-focusing the editor',
+  );
+  assert(
+    editorSource.includes('private isTypingSessionProtected(): boolean {')
+      && editorSource.includes('private scheduleCollabRecovery(')
+      && editorSource.includes('private async runScheduledCollabRecovery(): Promise<void> {'),
+    'Expected explicit typing-protection and queued collab recovery helpers',
+  );
+  assert(
+    editorSource.includes('private resolveShareDisplayedSyncStatus(')
+      && editorSource.includes('private clearShareSyncStatusHysteresis(): void {'),
+    'Expected share sync status hysteresis helpers for reconnect flicker control',
+  );
+  assert(
     editorSource.includes('private scheduleShareAgentPresenceExpiryRefresh(nextExpiryAtMs: number | null): void {'),
     'Expected explicit agent presence expiry refresh scheduler',
   );
@@ -35,24 +76,72 @@ function run(): void {
     'Expected share banner agent control updates to schedule TTL-bound refreshes',
   );
   assert(
-    editorSource.includes('private getAgentInviteMessage(): string {'),
-    'Expected dedicated agent invite message payload builder',
+    editorSource.includes('private buildAgentInvitePayload(): Promise<{ message: string; shareUrl: string; context: AgentSetupPromptContext }> {'),
+    'Expected dedicated agent invite payload builder',
   );
   assert(
-    editorSource.includes('Collaborate with me on this Proof doc.'),
-    'Expected agent invite copy payload to include collaboration instructions',
+    editorSource.includes('const shareUrl = await this.resolveAgentInviteUrl();'),
+    'Expected agent invite copy payload to resolve a tokenized share URL',
   );
   assert(
-    editorSource.includes('x-share-token:'),
-    'Expected agent invite copy payload to include explicit x-share-token auth guidance',
+    editorSource.includes('const context = buildAgentSetupPromptContext(shareUrl);'),
+    'Expected agent invite copy payload to reuse shared agent setup resource derivation',
   );
   assert(
-    editorSource.includes('Read current document state with your identity header:'),
-    'Expected agent invite copy payload to require explicit identity on state reads',
+    editorSource.includes('const message = buildAgentSetupPrompt(shareUrl);'),
+    'Expected agent invite copy payload to share the first-run setup prompt',
   );
   assert(
-    editorSource.includes('- X-Agent-Id: <your-agent-id>'),
-    'Expected agent invite copy payload to include explicit X-Agent-Id guidance',
+    welcomeCardSource.includes('Join this doc immediately so I can see your presence:'),
+    'Expected agent invite copy payload to prioritize joining presence first',
+  );
+  assert(
+    welcomeCardSource.includes("2. Once you have joined, read the current doc and reply: Connected in Proof and ready."),
+    'Expected agent invite copy payload to read the doc after joining',
+  );
+  assert(
+    welcomeCardSource.includes('Skill: ${context.skillUrl}') || welcomeCardSource.includes('Skill: https://'),
+    'Expected agent invite copy payload to include a skill fallback reference',
+  );
+  assert(
+    welcomeCardSource.includes('agent_onboarding_waiting_hint_shown'),
+    'Expected welcome card waiting state to emit analytics when fallback help appears',
+  );
+  assert(
+    welcomeCardSource.includes("Save this doc to your Library")
+      && welcomeCardSource.includes("captureLibrarySignupEvent('impression'")
+      && welcomeCardSource.includes("buildEveryAuthButtonInnerHtml(EVERY_AUTH_BUTTON_LABEL)"),
+    'Expected welcome card to reuse the modal shell for library signup with analytics and branded Every CTA',
+  );
+  assert(
+    welcomeCardSource.includes("If your agent has not appeared yet, it may still need the "),
+    'Expected waiting state to reveal a fallback setup hint',
+  );
+  assert(
+    editorSource.includes("source: 'doc_menu'"),
+    'Expected doc menu invite copy action to emit onboarding analytics',
+  );
+  assert(
+    editorSource.includes('showLibrarySignupCard({')
+      && editorSource.includes("action: 'oauth_return'")
+      && editorSource.includes("action: 'claim_success_impression'"),
+    'Expected library signup flow to use modal onboarding UI and emit return/claim analytics',
+  );
+  assert(
+    editorSource.includes('buildAgentSetupPromptContext(shareUrl)'),
+    'Expected help and copy flows to reuse shared agent setup resource derivation',
+  );
+  assert(
+    editorSource.includes('joins Proof first'),
+    'Expected inline help copy to mirror the join-first onboarding sequence',
+  );
+  assert(
+    editorSource.includes('resources.skillUrl'),
+    'Expected inline help copy to reuse the shared Proof skill URL derivation',
+  );
+  assert(
+    editorSource.includes('resources.docsUrl'),
+    'Expected inline help copy to reuse the shared agent docs URL derivation',
   );
   assert(
     editorSource.includes('if (!id || !isAgentScopedId(id)) return;'),
@@ -84,8 +173,17 @@ function run(): void {
     'Expected agent menu disconnect action to call share client helper',
   );
   assert(
-    editorSource.includes("addMenuButton('Copy agent invite link', async () => this.copyAgentInviteWithFallback(), {"),
-    'Expected agent menu copy action to use invite payload, not raw URL',
+    editorSource.includes("addMenuButton('Copy for agent', async () => {")
+      && editorSource.includes('this.openAgentSetupModal();'),
+    'Expected empty agent menu state to route the single agent action through onboarding',
+  );
+  assert(
+    !editorSource.includes("addMenuButton('Bring your agent into this doc', async () => {"),
+    'Expected empty agent menu state to avoid duplicate onboarding actions',
+  );
+  assert(
+    editorSource.includes("addMenuButton('Copy for agent', async () => this.copyAgentInviteWithFallback(), {"),
+    'Expected connected-agent menu to retain direct invite copy action',
   );
   assert(
     editorSource.includes('private setupTitleEditing(titleEl: HTMLElement): void {'),
@@ -203,6 +301,18 @@ function run(): void {
       && !bridgeSource.includes('if let by = json["by"] as? String, by.hasPrefix("ai:") {\n            return String(by.dropFirst(3))\n        }')
       && bridgeSource.includes('sendResponse(connection, status: 400, body: "{\\"error\\": \\"agentId must be agent-scoped\\"}")'),
     'Expected local Proof bridge to require explicit identity for presence and reject invalid agent ids',
+  );
+  assert(
+    agentRoutesSource.includes('function upgradeProvisionalAutoPresence('),
+    'Expected server presence flow to define provisional auto-presence upgrade helper',
+  );
+  assert(
+    agentRoutesSource.includes('upgradeProvisionalAutoPresence(req, slug, id);'),
+    'Expected authenticated explicit agent calls to upgrade provisional auto presence before writing named presence',
+  );
+  assert(
+    agentRoutesSource.includes('upgradeProvisionalAutoPresence(req, slug, agentId);'),
+    'Expected explicit /presence route to upgrade provisional auto presence before broadcasting named presence',
   );
 
   console.log('✓ collab regression guards round 2 checks');

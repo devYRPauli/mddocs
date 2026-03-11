@@ -1,4 +1,5 @@
-import { readFileSync } from 'fs';
+import { createHash } from 'crypto';
+import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import satori from 'satori';
@@ -10,26 +11,120 @@ const __dirname = path.dirname(__filename);
 const OG_IMAGE_WIDTH = 1200;
 const OG_IMAGE_HEIGHT = 630;
 const DEFAULT_PUBLIC_ORIGIN = 'http://localhost:4000';
-const FONT_REGULAR_PATH = path.resolve(
-  __dirname,
-  '..',
-  'node_modules',
-  '@fontsource',
-  'ibm-plex-sans',
-  'files',
-  'ibm-plex-sans-latin-400-normal.woff',
-);
-const FONT_BOLD_PATH = path.resolve(
-  __dirname,
-  '..',
-  'node_modules',
-  '@fontsource',
-  'ibm-plex-sans',
-  'files',
-  'ibm-plex-sans-latin-700-normal.woff',
-);
+const PROJECT_ROOT = path.resolve(__dirname, '..');
+
+const CARD_BACKGROUND = '#f0eee7';
+const CARD_TEXT = '#26251e';
+const CARD_MUTED_TEXT = 'rgba(38,37,30,0.6)';
+const LIVE_GREEN = '#1f8a65';
+const LIVE_GREEN_SOFT = 'rgba(38,104,84,0.1)';
+const PAUSE_GRAY = '#a5a5a5';
+const UNAVAILABLE_TITLE = 'Document unavailable';
+const SHARE_ASSET_PUBLIC_ROOT = '/assets/og-share';
+const SHARE_OG_TEMPLATE_VERSION = 'figma-og-v2';
+
+function resolveRepoPath(...segments: string[]): string {
+  const localPath = path.resolve(PROJECT_ROOT, ...segments);
+  if (existsSync(localPath)) return localPath;
+  const sharedRootPath = path.resolve(PROJECT_ROOT, '..', '..', ...segments);
+  if (existsSync(sharedRootPath)) return sharedRootPath;
+  return localPath;
+}
+
+function publicAssetPath(...segments: string[]): string {
+  return `${SHARE_ASSET_PUBLIC_ROOT}/${segments.join('/')}`;
+}
+
+function mimeTypeForPath(filePath: string): string {
+  switch (path.extname(filePath).toLowerCase()) {
+    case '.png':
+      return 'image/png';
+    case '.svg':
+      return 'image/svg+xml';
+    case '.ttf':
+      return 'font/ttf';
+    case '.woff':
+      return 'font/woff';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
+function fileToDataUrl(filePath: string): string {
+  const mimeType = mimeTypeForPath(filePath);
+  const fileBuffer = readFileSync(filePath);
+  return `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
+}
+
+const FONT_REGULAR_PATH = resolveRepoPath('public', 'assets', 'og-share', 'Switzer-Regular.ttf');
+const FONT_MEDIUM_PATH = resolveRepoPath('public', 'assets', 'og-share', 'Switzer-Medium.ttf');
+const BANNER_SOURCE_PATH = resolveRepoPath('public', 'assets', 'og-share', 'banner-source.png');
+const LINK_ICON_PATH = resolveRepoPath('public', 'assets', 'og-share', 'link-icon.svg');
+const LOGO_PATH = resolveRepoPath('public', 'assets', 'og-share', 'proof-logo-outlined.svg');
+
+type FaceMood = 'happy' | 'sad';
+
+export type FaceAssetId =
+  | 'happy-blue'
+  | 'happy-lime'
+  | 'happy-mint'
+  | 'happy-peach'
+  | 'happy-pink'
+  | 'happy-rose'
+  | 'sad-purple'
+  | 'sad-yellow';
+
+type FaceVariant = {
+  id: FaceAssetId;
+  mood: FaceMood;
+  publicPath: string;
+  dataUrl: string;
+};
+
+const HAPPY_FACE_IDS: FaceAssetId[] = [
+  'happy-blue',
+  'happy-lime',
+  'happy-mint',
+  'happy-peach',
+  'happy-pink',
+  'happy-rose',
+];
+
+const SAD_FACE_IDS: FaceAssetId[] = [
+  'sad-purple',
+  'sad-yellow',
+];
+
+const FACE_ASSET_PATHS: Record<FaceAssetId, string> = {
+  'happy-blue': resolveRepoPath('public', 'assets', 'og-share', 'faces', 'happy-blue.svg'),
+  'happy-lime': resolveRepoPath('public', 'assets', 'og-share', 'faces', 'happy-lime.svg'),
+  'happy-mint': resolveRepoPath('public', 'assets', 'og-share', 'faces', 'happy-mint.svg'),
+  'happy-peach': resolveRepoPath('public', 'assets', 'og-share', 'faces', 'happy-peach.svg'),
+  'happy-pink': resolveRepoPath('public', 'assets', 'og-share', 'faces', 'happy-pink.svg'),
+  'happy-rose': resolveRepoPath('public', 'assets', 'og-share', 'faces', 'happy-rose.svg'),
+  'sad-purple': resolveRepoPath('public', 'assets', 'og-share', 'faces', 'sad-purple.svg'),
+  'sad-yellow': resolveRepoPath('public', 'assets', 'og-share', 'faces', 'sad-yellow.svg'),
+};
+
+const FACE_ASSET_PUBLIC_PATHS: Record<FaceAssetId, string> = {
+  'happy-blue': publicAssetPath('faces', 'happy-blue.svg'),
+  'happy-lime': publicAssetPath('faces', 'happy-lime.svg'),
+  'happy-mint': publicAssetPath('faces', 'happy-mint.svg'),
+  'happy-peach': publicAssetPath('faces', 'happy-peach.svg'),
+  'happy-pink': publicAssetPath('faces', 'happy-pink.svg'),
+  'happy-rose': publicAssetPath('faces', 'happy-rose.svg'),
+  'sad-purple': publicAssetPath('faces', 'sad-purple.svg'),
+  'sad-yellow': publicAssetPath('faces', 'sad-yellow.svg'),
+};
+
 const FONT_REGULAR_DATA = readFileSync(FONT_REGULAR_PATH);
-const FONT_BOLD_DATA = readFileSync(FONT_BOLD_PATH);
+const FONT_MEDIUM_DATA = readFileSync(FONT_MEDIUM_PATH);
+const BANNER_SOURCE_DATA_URL = fileToDataUrl(BANNER_SOURCE_PATH);
+const LINK_ICON_DATA_URL = fileToDataUrl(LINK_ICON_PATH);
+const LOGO_DATA_URL = fileToDataUrl(LOGO_PATH);
+const FACE_ASSET_DATA_URLS = Object.fromEntries(
+  Object.entries(FACE_ASSET_PATHS).map(([id, filePath]) => [id, fileToDataUrl(filePath)]),
+) as Record<FaceAssetId, string>;
 
 type PreviewSourceDocument = {
   title?: string | null;
@@ -41,6 +136,7 @@ type PreviewSourceDocument = {
 
 export type SharePreviewModel = {
   slug: string;
+  publicOrigin: string;
   shareState: string;
   canonicalUrl: string;
   displayUrl: string | null;
@@ -48,11 +144,15 @@ export type SharePreviewModel = {
   title: string;
   description: string;
   excerpt: string | null;
+  bodyText: string;
   imageAlt: string;
   statusLabel: string;
   updatedAt: string | null;
   revisionTag: string;
   isUnavailable: boolean;
+  faceAssetId: FaceAssetId;
+  faceAssetPath: string;
+  faceMood: FaceMood;
 };
 
 type Child = PreviewElement | string;
@@ -61,8 +161,6 @@ type PreviewElement = {
   type: string;
   props: Record<string, unknown> & { children?: Child | Child[] };
 };
-
-const UNAVAILABLE_TITLE = 'Proof document unavailable';
 
 function toArrayBuffer(buffer: Buffer): ArrayBuffer {
   return Uint8Array.from(buffer).buffer;
@@ -107,7 +205,7 @@ function stripMarkdownInline(value: string): string {
       .replace(/__([^_]+)__/g, '$1')
       .replace(/_([^_]+)_/g, '$1')
       .replace(/~~([^~]+)~~/g, '$1')
-      .replace(/<[^>]+>/g, '')
+      .replace(/<[^>]+>/g, ''),
   );
 }
 
@@ -123,7 +221,7 @@ function markdownToPlainText(markdown: string): string {
       .replace(/^\s{0,3}>\s?/gm, '')
       .replace(/^\s{0,3}(?:[-+*]|\d+\.)\s+/gm, '')
       .replace(/[>*_~#`]/g, ' ')
-      .replace(/<[^>]+>/g, ' ')
+      .replace(/<[^>]+>/g, ' '),
   );
 }
 
@@ -151,16 +249,17 @@ function extractExcerpt(markdown: string, title: string): string | null {
       segment
         .replace(/^\s{0,3}#{1,6}\s+/gm, '')
         .replace(/^\s{0,3}>\s?/gm, '')
-        .replace(/^\s{0,3}(?:[-+*]|\d+\.)\s+/gm, '')
+        .replace(/^\s{0,3}(?:[-+*]|\d+\.)\s+/gm, ''),
     ))
     .filter(Boolean);
+
   for (const paragraph of paragraphs) {
     if (paragraph === title) continue;
-    if (paragraph.length >= 24) return paragraph;
+    if (paragraph.length >= 12) return paragraph;
   }
+
   const fallback = markdownToPlainText(markdown);
-  if (!fallback) return null;
-  if (fallback === title) return null;
+  if (!fallback || fallback === title) return null;
   return fallback;
 }
 
@@ -169,44 +268,41 @@ function truncate(value: string, maxLength: number): string {
   return `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
-function formatUpdatedLabel(updatedAt: string | null): string {
-  if (!updatedAt) return 'Live collaboration';
-  const date = new Date(updatedAt);
-  if (Number.isNaN(date.getTime())) return 'Live collaboration';
-  return `Updated ${new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    timeZone: 'UTC',
-  }).format(date)}`;
+function buildUnavailableDescription(shareState: string): string {
+  switch (shareState) {
+    case 'PAUSED':
+      return 'The shared Proof document is temporarily unavailable';
+    case 'REVOKED':
+      return 'The shared Proof document is no longer accessible';
+    case 'DELETED':
+      return 'The shared Proof document has been deleted';
+    default:
+      return 'The shared Proof document could not be found';
+  }
 }
 
 function humanizeShareState(shareState: string): string {
   switch (shareState) {
     case 'ACTIVE':
-      return 'Shared document';
+      return 'Live';
     case 'PAUSED':
       return 'Paused';
-    case 'REVOKED':
-      return 'Revoked';
-    case 'DELETED':
-      return 'Deleted';
     default:
       return 'Unavailable';
   }
 }
 
-function buildUnavailableDescription(shareState: string): string {
-  switch (shareState) {
-    case 'PAUSED':
-      return 'This shared Proof document is temporarily unavailable.';
-    case 'REVOKED':
-      return 'This shared Proof document is no longer accessible.';
-    case 'DELETED':
-      return 'This shared Proof document has been deleted.';
-    default:
-      return 'This shared Proof document could not be found.';
-  }
+function selectFaceVariant(slug: string, shareState: string): FaceVariant {
+  const isUnavailable = shareState !== 'ACTIVE';
+  const assetIds = isUnavailable ? SAD_FACE_IDS : HAPPY_FACE_IDS;
+  const faceAssetId = assetIds[createHash('sha1').update(`${slug}:${shareState}`).digest()[0] % assetIds.length];
+
+  return {
+    id: faceAssetId,
+    mood: isUnavailable ? 'sad' : 'happy',
+    publicPath: FACE_ASSET_PUBLIC_PATHS[faceAssetId],
+    dataUrl: FACE_ASSET_DATA_URLS[faceAssetId],
+  };
 }
 
 export function buildSharePreviewModel(input: {
@@ -215,29 +311,30 @@ export function buildSharePreviewModel(input: {
   doc?: PreviewSourceDocument | null;
   shareState?: string | null;
 }): SharePreviewModel {
-  const origin = resolvePublicOrigin(input.origin);
+  const publicOrigin = resolvePublicOrigin(input.origin);
   const shareState = (input.doc?.shareState ?? input.shareState ?? 'ACTIVE').toUpperCase();
   const isUnavailable = shareState !== 'ACTIVE';
   const markdown = input.doc?.markdown ?? '';
   const title = isUnavailable ? UNAVAILABLE_TITLE : extractTitle(markdown, input.doc?.title);
   const excerpt = isUnavailable ? null : extractExcerpt(markdown, title);
-  const descriptionBase = isUnavailable
-    ? buildUnavailableDescription(shareState)
-    : excerpt ?? 'Shared on Proof';
-  const description = truncate(
-    isUnavailable ? descriptionBase : `${title} — ${descriptionBase}`,
-    160,
+  const bodyText = truncate(
+    isUnavailable ? buildUnavailableDescription(shareState) : (excerpt ?? 'Shared on Proof'),
+    isUnavailable ? 120 : 220,
   );
+  const description = truncate(bodyText, 160);
   const revisionTagRaw = input.doc?.revision ?? input.doc?.updatedAt ?? '0';
   const revisionTag = String(revisionTagRaw);
-  const canonicalUrl = `${origin}/d/${encodeURIComponent(input.slug)}`;
+  const canonicalUrl = `${publicOrigin}/d/${encodeURIComponent(input.slug)}`;
   const displayUrl = isUnavailable ? null : canonicalUrl.replace(/^https?:\/\//, '');
-  const imageUrl = `${origin}/og/share/${encodeURIComponent(input.slug)}.png?v=${encodeURIComponent(revisionTag)}`;
-  const imageAlt = excerpt
-    ? `${title}. ${truncate(excerpt, 120)}`
+  const imageUrl = `${publicOrigin}/og/share/${encodeURIComponent(input.slug)}.png?v=${encodeURIComponent(revisionTag)}&t=${encodeURIComponent(SHARE_OG_TEMPLATE_VERSION)}`;
+  const imageAlt = bodyText
+    ? `${title}. ${truncate(bodyText, 120)}`
     : `${title} on Proof`;
+  const face = selectFaceVariant(input.slug, shareState);
+
   return {
     slug: input.slug,
+    publicOrigin,
     shareState,
     canonicalUrl,
     displayUrl,
@@ -245,11 +342,15 @@ export function buildSharePreviewModel(input: {
     title,
     description,
     excerpt,
+    bodyText,
     imageAlt,
     statusLabel: humanizeShareState(shareState),
     updatedAt: input.doc?.updatedAt ?? null,
     revisionTag,
     isUnavailable,
+    faceAssetId: face.id,
+    faceAssetPath: face.publicPath,
+    faceMood: face.mood,
   };
 }
 
@@ -262,6 +363,7 @@ export function renderShareMetaTags(model: SharePreviewModel): string {
   const secureImageTag = model.imageUrl.startsWith('https://')
     ? `\n<meta property="og:image:secure_url" content="${imageUrl}">`
     : '';
+
   return [
     `<title>${title}</title>`,
     `<meta name="description" content="${description}">`,
@@ -301,70 +403,167 @@ export function resolveOgTextLayout(title: string): {
   contentGap: string;
 } {
   const length = title.trim().length;
-  if (length >= 95) {
+  if (length >= 170) {
     return {
-      titleFontSize: 56,
-      excerptFontSize: 28,
+      titleFontSize: 44,
+      excerptFontSize: 30,
       excerptMaxLength: 132,
-      contentGap: '18px',
+      contentGap: '10px',
     };
   }
-  if (length >= 72) {
+  if (length >= 140) {
     return {
-      titleFontSize: 62,
-      excerptFontSize: 29,
-      excerptMaxLength: 168,
-      contentGap: '22px',
+      titleFontSize: 50,
+      excerptFontSize: 34,
+      excerptMaxLength: 150,
+      contentGap: '12px',
     };
   }
   return {
-    titleFontSize: 68,
-    excerptFontSize: 30,
-    excerptMaxLength: 220,
-    contentGap: '28px',
+    titleFontSize: 55,
+    excerptFontSize: 38,
+    excerptMaxLength: 180,
+    contentGap: '12.595px',
   };
 }
 
-function buildOgTree(model: SharePreviewModel): PreviewElement {
-  const accent = model.isUnavailable ? '#475569' : '#14b8a6';
-  const accentSoft = model.isUnavailable ? '#1e293b' : '#0f766e';
-  const textLayout = resolveOgTextLayout(model.title);
-  const excerpt = truncate(
-    model.excerpt ?? buildUnavailableDescription(model.shareState),
-    textLayout.excerptMaxLength,
-  );
-  const footerChildren: Child[] = [];
-  if (model.displayUrl) {
-    footerChildren.push(
-      element(
-        'div',
-        {
-          style: {
-            display: 'flex',
-            padding: '12px 18px',
-            borderRadius: '16px',
-            backgroundColor: 'rgba(15, 23, 42, 0.78)',
-            color: '#e2e8f0',
-            fontSize: '22px',
-          },
-        },
-        model.displayUrl
-      )
-    );
-  }
-  footerChildren.push(
-    element(
+function buildStatusTree(model: SharePreviewModel): PreviewElement {
+  const icon = model.isUnavailable
+    ? element(
       'div',
       {
         style: {
           display: 'flex',
-          color: '#94a3b8',
-          fontSize: '22px',
+          gap: '3px',
+          alignItems: 'center',
+          height: '18px',
         },
       },
-      formatUpdatedLabel(model.updatedAt)
+      element('div', {
+        style: {
+          width: '8px',
+          height: '18px',
+          backgroundColor: PAUSE_GRAY,
+          display: 'flex',
+        },
+      }),
+      element('div', {
+        style: {
+          width: '8px',
+          height: '18px',
+          backgroundColor: PAUSE_GRAY,
+          display: 'flex',
+        },
+      }),
     )
+    : element('div', {
+      style: {
+        width: '19px',
+        height: '19px',
+        borderRadius: '999px',
+        backgroundColor: LIVE_GREEN,
+        display: 'flex',
+      },
+    });
+
+  return element(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '9px',
+        color: '#0f0f0f',
+        fontSize: '31.908px',
+        lineHeight: 1.1,
+        letterSpacing: '-0.0924px',
+        fontWeight: 400,
+        fontFamily: 'Switzer',
+      },
+    },
+    icon,
+    model.statusLabel,
   );
+}
+
+function buildUrlChipTree(model: SharePreviewModel): PreviewElement {
+  return element(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        padding: '10px 30px',
+        borderRadius: '1000px',
+        backgroundColor: LIVE_GREEN_SOFT,
+        color: LIVE_GREEN,
+        fontSize: '30px',
+        lineHeight: 1.1,
+        letterSpacing: '-0.0924px',
+        fontWeight: 400,
+        fontFamily: 'Switzer',
+        maxWidth: '805px',
+      },
+    },
+    element('img', {
+      alt: '',
+      src: LINK_ICON_DATA_URL,
+      width: 40,
+      height: 40,
+      style: {
+        width: '40px',
+        height: '40px',
+        display: 'flex',
+      },
+    }),
+    truncate(model.displayUrl ?? '', 54),
+  );
+}
+
+function buildFooterTree(model: SharePreviewModel): PreviewElement {
+  const footerTop = model.isUnavailable ? 555 : 542;
+  const footerStyle = model.isUnavailable
+    ? {
+        position: 'absolute',
+        left: '53px',
+        top: `${footerTop}px`,
+        width: '1095px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+      }
+    : {
+        position: 'absolute',
+        left: '53px',
+        top: `${footerTop}px`,
+        width: '1095px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '38px',
+      };
+
+  if (model.displayUrl) {
+    return element(
+      'div',
+      { style: footerStyle },
+      buildUrlChipTree(model),
+      buildStatusTree(model),
+    );
+  }
+
+  return element(
+    'div',
+    { style: footerStyle },
+    buildStatusTree(model),
+  );
+}
+
+function buildOgTree(model: SharePreviewModel): PreviewElement {
+  const textLayout = resolveOgTextLayout(model.title);
+  const bodyText = truncate(model.bodyText, textLayout.excerptMaxLength);
+
   return element(
     'div',
     {
@@ -374,49 +573,76 @@ function buildOgTree(model: SharePreviewModel): PreviewElement {
         display: 'flex',
         position: 'relative',
         overflow: 'hidden',
-        backgroundColor: '#07111c',
-        color: '#f8fafc',
-        fontFamily: '"IBM Plex Sans"',
+        backgroundColor: CARD_BACKGROUND,
+        color: CARD_TEXT,
+        fontFamily: 'Switzer',
       },
     },
-    element('div', {
+    element('img', {
+      alt: '',
+      src: BANNER_SOURCE_DATA_URL,
+      width: OG_IMAGE_WIDTH,
+      height: OG_IMAGE_HEIGHT,
       style: {
-        display: 'flex',
         position: 'absolute',
-        top: '-120px',
-        right: '-140px',
-        width: '420px',
-        height: '420px',
-        borderRadius: '999px',
-        backgroundColor: accentSoft,
-        opacity: 0.52,
+        left: '0px',
+        top: '0px',
+        width: `${OG_IMAGE_WIDTH}px`,
+        height: `${OG_IMAGE_HEIGHT}px`,
+        objectFit: 'cover',
+        display: 'flex',
       },
     }),
     element('div', {
       style: {
-        display: 'flex',
         position: 'absolute',
-        left: '-120px',
-        bottom: '-180px',
-        width: '380px',
-        height: '380px',
-        borderRadius: '999px',
-        backgroundColor: '#112235',
-        opacity: 0.9,
+        left: '0px',
+        top: '99px',
+        width: `${OG_IMAGE_WIDTH}px`,
+        height: '531px',
+        backgroundColor: CARD_BACKGROUND,
+        display: 'flex',
+      },
+    }),
+    element('img', {
+      alt: 'Proof',
+      src: LOGO_DATA_URL,
+      width: 353.008,
+      height: 159.021,
+      style: {
+        position: 'absolute',
+        left: '40.492px',
+        top: '32.995px',
+        width: '353.008px',
+        height: '159.021px',
+        display: 'flex',
+      },
+    }),
+    element('img', {
+      alt: '',
+      src: FACE_ASSET_DATA_URLS[model.faceAssetId],
+      width: 130.262,
+      height: 130.262,
+      style: {
+        position: 'absolute',
+        left: '1017.238px',
+        top: model.isUnavailable ? '43px' : '45px',
+        width: '130.262px',
+        height: '130.262px',
+        display: 'flex',
       },
     }),
     element(
       'div',
       {
         style: {
-          position: 'relative',
+          position: 'absolute',
+          left: '52.5px',
+          top: model.isUnavailable ? '188.022px' : '190.022px',
+          width: '1095px',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between',
-          width: '100%',
-          height: '100%',
-          padding: '52px',
-          boxSizing: 'border-box',
+          gap: textLayout.contentGap,
         },
       },
       element(
@@ -424,110 +650,126 @@ function buildOgTree(model: SharePreviewModel): PreviewElement {
         {
           style: {
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
+            fontSize: `${textLayout.titleFontSize}px`,
+            lineHeight: 1.1,
+            letterSpacing: '-0.2729px',
+            fontWeight: 500,
+            color: CARD_TEXT,
+            fontFamily: 'Switzer',
           },
         },
-        element(
-          'div',
-          {
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              gap: '14px',
-            },
-          },
-          element('div', {
-            style: {
-              width: '14px',
-              height: '14px',
-              borderRadius: '999px',
-              backgroundColor: accent,
-            },
-          }),
-          element(
-            'div',
-            {
-              style: {
-                display: 'flex',
-                fontSize: '28px',
-                color: '#dbeafe',
-                fontWeight: 700,
-                letterSpacing: '-0.02em',
-              },
-            },
-            'Proof'
-          )
-        ),
-        element(
-          'div',
-          {
-            style: {
-              display: 'flex',
-              padding: '10px 18px',
-              borderRadius: '999px',
-              backgroundColor: 'rgba(15, 23, 42, 0.78)',
-              border: `1px solid ${accent}`,
-              color: '#e2e8f0',
-              fontSize: '22px',
-              fontWeight: 600,
-            },
-          },
-          model.statusLabel
-        )
+        truncate(model.title, 160),
       ),
       element(
         'div',
         {
           style: {
             display: 'flex',
-            flexDirection: 'column',
-            gap: textLayout.contentGap,
-            maxWidth: '880px',
+            fontSize: `${textLayout.excerptFontSize}px`,
+            lineHeight: 1.1,
+            letterSpacing: '-0.0924px',
+            color: CARD_MUTED_TEXT,
+            fontWeight: 400,
+            fontFamily: 'Switzer',
           },
         },
-        element(
-          'div',
-          {
-            style: {
-              display: 'flex',
-              fontSize: `${textLayout.titleFontSize}px`,
-              lineHeight: 1.04,
-              letterSpacing: '-0.045em',
-              fontWeight: 700,
-              color: '#f8fafc',
-            },
-          },
-          truncate(model.title, 120)
-        ),
-        element(
-          'div',
-          {
-            style: {
-              display: 'flex',
-              fontSize: `${textLayout.excerptFontSize}px`,
-              lineHeight: 1.3,
-              color: '#cbd5e1',
-              fontWeight: 400,
-            },
-          },
-          excerpt
-        )
+        bodyText,
       ),
-      element(
-        'div',
-        {
-          style: {
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '24px',
-          },
-        },
-        ...footerChildren
-      )
-    )
+    ),
+    buildFooterTree(model),
   );
+}
+
+export function renderSharePreviewHtmlPage(
+  model: SharePreviewModel,
+  options: { markdown?: string | null; note?: string | null } = {},
+): string {
+  const note = options.note?.trim();
+  const markdown = options.markdown ?? null;
+  const markdownSection = markdown
+    ? `<div class="share-page__markdown">
+      <div class="share-page__markdown-label">Snapshot</div>
+      <pre>${escapeHtml(markdown)}</pre>
+    </div>`
+    : '';
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  ${renderShareMetaTags(model)}
+  <style>
+    :root {
+      color-scheme: light;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #e7e4dc;
+      color: ${CARD_TEXT};
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .share-page {
+      width: 100%;
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .share-page__note {
+      font-size: 14px;
+      line-height: 1.4;
+      color: rgba(38,37,30,0.7);
+      padding: 0 2px;
+    }
+    .share-page__card {
+      width: min(1200px, 100%);
+      display: block;
+      margin: 0;
+      border: 0;
+    }
+    .share-page__markdown {
+      width: min(1200px, 100%);
+      background: rgba(255,255,255,0.72);
+      border: 1px solid rgba(38,37,30,0.12);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 18px 38px rgba(38, 37, 30, 0.08);
+    }
+    .share-page__markdown-label {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(38,37,30,0.1);
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(38,37,30,0.6);
+    }
+    .share-page__markdown pre {
+      margin: 0;
+      padding: 18px 16px 22px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 15px;
+      line-height: 1.55;
+      color: ${CARD_TEXT};
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace;
+    }
+  </style>
+</head>
+<body>
+  <main class="share-page">
+    ${note ? `<div class="share-page__note">${escapeHtml(note)}</div>` : ''}
+    <img class="share-page__card" src="${escapeHtml(model.imageUrl)}" alt="${escapeHtml(model.imageAlt)}">
+    ${markdownSection}
+  </main>
+</body>
+</html>`;
 }
 
 export async function renderShareOgSvg(model: SharePreviewModel): Promise<string> {
@@ -536,15 +778,15 @@ export async function renderShareOgSvg(model: SharePreviewModel): Promise<string
     height: OG_IMAGE_HEIGHT,
     fonts: [
       {
-        name: 'IBM Plex Sans',
+        name: 'Switzer',
         data: toArrayBuffer(FONT_REGULAR_DATA),
         weight: 400,
         style: 'normal',
       },
       {
-        name: 'IBM Plex Sans',
-        data: toArrayBuffer(FONT_BOLD_DATA),
-        weight: 700,
+        name: 'Switzer',
+        data: toArrayBuffer(FONT_MEDIUM_DATA),
+        weight: 500,
         style: 'normal',
       },
     ],

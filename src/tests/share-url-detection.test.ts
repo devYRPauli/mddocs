@@ -29,8 +29,16 @@ async function run(): Promise<void> {
     assert(shareClient.isShareMode() === true, 'Expected isShareMode true for /d/:slug/ trailing slash');
     assert(shareClient.getSlug() === 'test-slug', 'Expected slug to parse from /d/:slug/ trailing slash');
 
+    // `/library` should behave as share mode when configured.
+    (globalThis as any).window.location.pathname = '/library';
+    (globalThis as any).window.__PROOF_CONFIG__ = { shareSlug: 'library-slug' };
+    assert(shareClient.refreshRuntimeConfig() === true, 'Expected refreshRuntimeConfig true for /library');
+    assert(shareClient.isShareMode() === true, 'Expected isShareMode true for /library');
+    assert(shareClient.getSlug() === 'library-slug', 'Expected slug from runtime config for /library');
+
     // `/d/:slug/bridge` should not be treated as share mode (bridge route).
     (globalThis as any).window.location.pathname = '/d/test-slug/bridge';
+    (globalThis as any).window.__PROOF_CONFIG__ = {};
     shareClient.refreshRuntimeConfig();
     assert(shareClient.isShareMode() === false, 'Expected isShareMode false for /d/:slug/bridge');
     assert(shareClient.getSlug() === null, 'Expected slug null for /d/:slug/bridge');
@@ -49,4 +57,3 @@ run().catch((err) => {
   console.error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 });
-

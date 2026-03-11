@@ -38,6 +38,7 @@ function getTopViewportInset(margin: number): number {
     if (!element) continue;
     const style = window.getComputedStyle(element);
     if (style.position !== 'fixed' && style.position !== 'sticky') continue;
+    if (typeof element.getBoundingClientRect !== 'function') continue;
     const rect = element.getBoundingClientRect();
     if (rect.height <= 0 || rect.bottom <= 0) continue;
     inset = Math.max(inset, Math.ceil(rect.bottom + margin));
@@ -59,6 +60,8 @@ function getAnchorBox(view: EditorView, range: MarkRange) {
 function positionBar(bar: HTMLElement, view: EditorView, range: MarkRange): void {
   try {
     const anchorBox = getAnchorBox(view, range);
+    if (typeof view.dom.getBoundingClientRect !== 'function') return;
+    if (typeof bar.getBoundingClientRect !== 'function') return;
     const editorRect = view.dom.getBoundingClientRect();
     const barRect = bar.getBoundingClientRect();
     const margin = 12;

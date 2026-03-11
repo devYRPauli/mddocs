@@ -203,13 +203,8 @@ export const proofCommentSchema = $markSchema('proofComment', (ctx) => ({
     return ['span', domAttrs, 0];
   },
   parseMarkdown: {
-    match: (node) => {
-      const isMatch = (node as ProofNode).type === 'proofMark' && (node as ProofNode).proof === 'comment';
-      console.log('[parseMarkdown:comment] match called, node type:', (node as ProofNode).type, 'proof:', (node as ProofNode).proof, 'isMatch:', isMatch);
-      return isMatch;
-    },
+    match: (node) => (node as ProofNode).type === 'proofMark' && (node as ProofNode).proof === 'comment',
     runner: (state, node, markType) => {
-      console.log('[parseMarkdown:comment] runner called with node:', JSON.stringify(node).slice(0, 500));
       const proofNode = node as ProofNode;
       const attrs = proofNode.attrs || {};
       state.openMark(markType, {
@@ -354,7 +349,7 @@ export const proofAuthoredSchema = $markSchema('proofAuthored', (ctx) => ({
       tag: 'span[data-proof="authored"]',
       getAttrs: (dom: HTMLElement): Attrs => ({
         by: dom.getAttribute('data-by') || 'human:unknown',
-        id: dom.getAttribute('data-proof-id') || null,
+        id: dom.getAttribute('data-proof-id') || dom.getAttribute('data-id') || null,
       }),
     },
   ],

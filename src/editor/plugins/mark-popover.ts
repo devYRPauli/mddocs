@@ -149,6 +149,7 @@ function getTopViewportInset(margin: number): number {
     if (!element) continue;
     const style = window.getComputedStyle(element);
     if (style.position !== 'fixed' && style.position !== 'sticky') continue;
+    if (typeof element.getBoundingClientRect !== 'function') continue;
     const rect = element.getBoundingClientRect();
     if (rect.height <= 0 || rect.bottom <= 0) continue;
     inset = Math.max(inset, Math.ceil(rect.bottom + margin));
@@ -171,6 +172,8 @@ function positionPopover(element: HTMLElement, view: EditorView, anchor: MarkRan
   if (!anchor) return;
   try {
     const anchorBox = getAnchorBox(view, anchor);
+    if (typeof view.dom.getBoundingClientRect !== 'function') return;
+    if (typeof element.getBoundingClientRect !== 'function') return;
     const editorRect = view.dom.getBoundingClientRect();
     const popoverRect = element.getBoundingClientRect();
     const margin = 12;
@@ -294,6 +297,7 @@ class MarkPopoverController {
   }
 
   private getDomSelectionRangeFromRects(range: Range): { from: number; to: number } | null {
+    if (typeof range.getClientRects !== 'function') return null;
     const rects = Array.from(range.getClientRects());
     if (rects.length === 0) return null;
     const firstRect = rects[0];
@@ -1275,7 +1279,9 @@ class MarkPopoverController {
     const text = selection.toString().trim();
     if (!text) return null;
     try {
-      const rect = selection.getRangeAt(0).getBoundingClientRect();
+      const range = selection.getRangeAt(0);
+      if (!range || typeof range.getBoundingClientRect !== 'function') return null;
+      const rect = range.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return null;
       return rect;
     } catch {
@@ -1515,23 +1521,28 @@ class MarkPopoverController {
       this.strip.style.right = '';
       return;
     }
-    const vv = window.visualViewport;
-    const viewportHeight = getVisualViewportHeight(window.innerHeight, vv ?? null);
-    const safeTop = getTopViewportInset(12);
-    const stripRect = this.strip.getBoundingClientRect();
-    const maxTop = Math.max(safeTop, viewportHeight - stripRect.height - 12);
-    const belowTop = selectionRect.bottom + 10;
-    const aboveTop = selectionRect.top - stripRect.height - 10;
-    const targetTop = belowTop <= maxTop ? belowTop : clamp(aboveTop, safeTop, maxTop);
-    const targetLeft = clamp(
-      selectionRect.left + (selectionRect.width / 2) - (stripRect.width / 2),
-      12,
-      window.innerWidth - stripRect.width - 12
-    );
-    this.strip.style.top = `${targetTop}px`;
-    this.strip.style.left = `${targetLeft}px`;
-    this.strip.style.right = 'auto';
-    this.strip.style.bottom = 'auto';
+    try {
+      if (typeof this.strip.getBoundingClientRect !== 'function') return;
+      const vv = window.visualViewport;
+      const viewportHeight = getVisualViewportHeight(window.innerHeight, vv ?? null);
+      const safeTop = getTopViewportInset(12);
+      const stripRect = this.strip.getBoundingClientRect();
+      const maxTop = Math.max(safeTop, viewportHeight - stripRect.height - 12);
+      const belowTop = selectionRect.bottom + 10;
+      const aboveTop = selectionRect.top - stripRect.height - 10;
+      const targetTop = belowTop <= maxTop ? belowTop : clamp(aboveTop, safeTop, maxTop);
+      const targetLeft = clamp(
+        selectionRect.left + (selectionRect.width / 2) - (stripRect.width / 2),
+        12,
+        window.innerWidth - stripRect.width - 12
+      );
+      this.strip.style.top = `${targetTop}px`;
+      this.strip.style.left = `${targetLeft}px`;
+      this.strip.style.right = 'auto';
+      this.strip.style.bottom = 'auto';
+    } catch {
+      // Ignore invalid rect reads (prevents crash on remote comment inserts).
+    }
   }
 
   private scheduleMobileStripPadding(): void {
@@ -1548,12 +1559,20 @@ class MarkPopoverController {
         this.clearMobileStripPadding();
         return;
       }
-      const rect = this.strip.getBoundingClientRect();
-      if (rect.height <= 0) {
+      try {
+        if (typeof this.strip.getBoundingClientRect !== 'function') {
+          this.clearMobileStripPadding();
+          return;
+        }
+        const rect = this.strip.getBoundingClientRect();
+        if (rect.height <= 0) {
+          this.clearMobileStripPadding();
+          return;
+        }
+        this.applyMobileStripPadding(Math.ceil(rect.height + MOBILE_STRIP_PADDING_EXTRA));
+      } catch {
         this.clearMobileStripPadding();
-        return;
       }
-      this.applyMobileStripPadding(Math.ceil(rect.height + MOBILE_STRIP_PADDING_EXTRA));
     });
   }
 

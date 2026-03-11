@@ -9,7 +9,7 @@ function assert(condition: boolean, message: string): void {
 
 type ScriptHarness = {
   context: Record<string, any>;
-  button: { textContent: string };
+  button: { textContent: string; getAttribute: (name: string) => string | null };
   timers: Array<() => void>;
   clipboardWrites: string[];
   execCommands: string[];
@@ -48,7 +48,12 @@ function createHarness(options: {
   clipboardWrite?: (value: string) => Promise<void>;
   execCommandResult: boolean;
 }): ScriptHarness {
-  const button = { textContent: 'Copy' };
+  const button = {
+    textContent: 'Copy',
+    getAttribute(name: string) {
+      return name === 'data-copy-label' ? 'Copy' : null;
+    },
+  };
   const timers: Array<() => void> = [];
   const clipboardWrites: string[] = [];
   const execCommands: string[] = [];
@@ -123,6 +128,9 @@ function createHarness(options: {
       querySelectorAll() {
         return [];
       },
+      addEventListener() {
+        // no-op
+      },
     },
     navigator: options.clipboardWrite
       ? {
@@ -134,7 +142,15 @@ function createHarness(options: {
           },
         }
       : {},
-    window: { event: null },
+    window: {
+      event: null,
+      addEventListener() {
+        // no-op
+      },
+      removeEventListener() {
+        // no-op
+      },
+    },
     setTimeout(fn: () => void) {
       timers.push(fn);
       return timers.length;
@@ -169,8 +185,19 @@ function createSwitchTabHarness(): ToggleHarness {
         if (id === 'tab-codex') return panelCodex;
         return null;
       },
+      addEventListener() {
+        // no-op
+      },
     },
-    window: { event: null },
+    window: {
+      event: null,
+      addEventListener() {
+        // no-op
+      },
+      removeEventListener() {
+        // no-op
+      },
+    },
     setTimeout() {
       return 0;
     },
@@ -231,6 +258,22 @@ async function run(): Promise<void> {
   });
   await fallbackFailure.context.copyCode('code-block');
   assert(fallbackFailure.button.textContent === 'Copy failed', 'button should show failure state when copy fails');
+
+  const externalTrigger = {
+    textContent: 'Copy for your agent',
+    getAttribute(name: string) {
+      return name === 'data-copy-label' ? 'Copy for your agent' : null;
+    },
+  };
+  const externalCopyHarness = createHarness({
+    codeText: 'echo external trigger',
+    clipboardWrite: async () => {},
+    execCommandResult: true,
+  });
+  await externalCopyHarness.context.copyCode('code-block', externalTrigger);
+  assert(externalTrigger.textContent === 'Copied!', 'external trigger button should show copied state on success');
+  externalCopyHarness.timers.forEach((timer) => timer());
+  assert(externalTrigger.textContent === 'Copy for your agent', 'external trigger button should restore its custom label after timeout');
 
   console.log('✓ homepage tab + copy script behavior is stable');
 }

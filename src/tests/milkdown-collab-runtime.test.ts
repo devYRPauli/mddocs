@@ -50,22 +50,27 @@ function run(): void {
   );
   assert(
     source.includes('provider.on(\'authenticationFailed\'')
-      && source.includes('mapAuthFailureToTerminalReason')
-      && source.includes("reason === 'session-stale'"),
-    'Expected auth-failure reasons (including session-stale) to map to terminal close handling',
+      && source.includes('lastAuthenticationFailureReason')
+      && !source.includes('mapAuthFailureToTerminalReason'),
+    'Expected auth failures to remain refreshable signals instead of immediate terminal close handling',
   );
   assert(
     source.includes('preserveConnection: false'),
     'Expected provider to disable preserveConnection so auth failures fully tear down stale sockets',
   );
   assert(
-    source.includes("this.terminalCloseReason = 'unshared';"),
-    'Expected close code to map to unshared terminal reason',
+    source.includes('private activeSession: CollabSessionInfo | null = null;')
+      && source.includes('token: () => this.activeSession?.token ?? null,'),
+    'Expected provider auth to read from the live session token instead of a fixed initial token',
   );
   assert(
-    source.includes("code === 4003 || code === 4403 || code === 4401")
-      && source.includes("this.terminalCloseReason = 'permission-denied';"),
-    'Expected close code to map to permission-denied terminal reason',
+    source.includes('requiresHardReconnect(session: CollabSessionInfo): boolean {')
+      && source.includes('softRefreshSession(session: CollabSessionInfo): boolean {')
+      && source.includes('this.provider.setConfiguration({')
+      && source.includes('this.provider.configuration.websocketProvider.setConfiguration({')
+      && source.includes('this.provider.disconnect();')
+      && source.includes('void this.provider.connect();'),
+    'Expected collab runtime to support soft session refresh on the existing provider/Y.Doc before falling back to hard reconnect',
   );
   assert(
     source.includes('const preserveLocalState = options?.preserveLocalState !== false;')
@@ -77,6 +82,10 @@ function run(): void {
       && source.includes('const localState = canPreserveLocalState && this.ydoc ? Y.encodeStateAsUpdate(this.ydoc) : null;')
       && source.includes("Y.applyUpdate(this.ydoc, localState, 'local-reconnect-bootstrap');"),
     'Expected reconnect path to preserve local Yjs state only for writable roles with real pending local state',
+  );
+  assert(
+    source.includes('this.activeSession.accessEpoch === session.accessEpoch;'),
+    'Expected hard-reconnect decisions to include accessEpoch changes',
   );
   assert(
     source.includes('private sessionRole: ShareRole | null = null;')

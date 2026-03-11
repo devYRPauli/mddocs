@@ -16,9 +16,14 @@ import {
   getCanonicalReadableDocumentSync,
   invalidateCollabDocument,
   isCanonicalReadMutationReady,
+  type CanonicalReadableDocument,
 } from './collab.js';
 import { mutateCanonicalDocument } from './canonical-document.js';
 import { canonicalizeStoredMarks } from '../src/formats/marks.js';
+import {
+  finalizeSuggestionThroughRehydration,
+  type ProofMarkRehydrationFailure,
+} from './proof-mark-rehydration.js';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -45,14 +50,21 @@ export interface EngineExecutionResult {
   body: JsonRecord;
 }
 
+export type AsyncDocumentMutationContext = {
+  doc: CanonicalReadableDocument;
+};
+
 function getCanonicalReadableDocument(slug: string) {
   return getCanonicalReadableDocumentSync(slug, 'state') ?? getDocumentBySlug(slug);
 }
 
-function getMutationReadyDocument(slug: string):
+function getMutationReadyDocument(
+  slug: string,
+  context?: AsyncDocumentMutationContext,
+):
   | { doc: NonNullable<ReturnType<typeof getCanonicalReadableDocument>>; error: null }
   | { doc: null; error: EngineExecutionResult } {
-  const doc = getCanonicalReadableDocument(slug);
+  const doc = context?.doc ?? getCanonicalReadableDocument(slug);
   if (!doc) {
     return { doc: null, error: { status: 404, body: { success: false, error: 'Document not found' } } };
   }
@@ -453,7 +465,6 @@ function expandMarkdownSpan(markdown: string, start: number, end: number): { sta
     return hasPrefix ? idx : 0;
   };
 
-  // Loop to expand through multiple layers of nested formatting (e.g. **_bold_**)
   let changed = true;
   while (changed) {
     changed = false;
@@ -466,23 +477,20 @@ function expandMarkdownSpan(markdown: string, start: number, end: number): { sta
       expandedStart = openStart;
       expandedEnd = closeEnd;
       changed = true;
-      break; // restart pair scan from longest markers
+      break;
     }
   }
 
-  // Also expand through HTML inline tags (e.g. <strong>bold</strong>, <em>italic</em>)
-  // Search bounds: HTML tags in typical documents are short (<tag attr="val">),
-  // so we limit lookbehind to 50 chars and lookahead to 30 chars for efficiency.
-  const HTML_TAG_LOOKAHEAD = 30;
-  const HTML_TAG_LOOKBEHIND = 50;
+  const htmlTagLookahead = 30;
+  const htmlTagLookbehind = 50;
   changed = true;
   while (changed) {
     changed = false;
-    const afterSlice = markdown.slice(expandedEnd, expandedEnd + HTML_TAG_LOOKAHEAD);
+    const afterSlice = markdown.slice(expandedEnd, expandedEnd + htmlTagLookahead);
     const closeMatch = afterSlice.match(/^<\/([a-zA-Z][a-zA-Z0-9]*)>/);
     if (closeMatch) {
       const tagName = closeMatch[1];
-      const beforeSlice = markdown.slice(Math.max(0, expandedStart - HTML_TAG_LOOKBEHIND), expandedStart);
+      const beforeSlice = markdown.slice(Math.max(0, expandedStart - htmlTagLookbehind), expandedStart);
       const openPattern = new RegExp(`<${tagName}\\b[^>]*>$`);
       const openMatch = beforeSlice.match(openPattern);
       if (openMatch) {
@@ -493,12 +501,9 @@ function expandMarkdownSpan(markdown: string, start: number, end: number): { sta
     }
   }
 
-  // Expand through markdown links/images: [text](url), ![alt](url), [text][ref]
-  // Check if the span is the text part of a link: look for [ before and ](url) or ][ref] after
   const beforeChar = expandedStart > 0 ? markdown[expandedStart - 1] : '';
   const beforeChar2 = expandedStart > 1 ? markdown[expandedStart - 2] : '';
   if (beforeChar === '[') {
-    // Could be [text](...) or ![text](...)
     const afterSlice = markdown.slice(expandedEnd);
     const linkClose = afterSlice.match(/^\]\([^)]*\)/);
     const refClose = afterSlice.match(/^\]\[[^\]]*\]/);
@@ -513,7 +518,6 @@ function expandMarkdownSpan(markdown: string, start: number, end: number): { sta
     }
   }
 
-  // Expand to include line-level prefixes when span covers the full line content.
   const lineStart = markdown.lastIndexOf('\n', expandedStart - 1) + 1;
   const lineEndIdx = markdown.indexOf('\n', expandedEnd);
   const lineEnd = lineEndIdx === -1 ? markdown.length : lineEndIdx;
@@ -526,12 +530,6 @@ function expandMarkdownSpan(markdown: string, start: number, end: number): { sta
   }
 
   return { start: expandedStart, end: expandedEnd };
-}
-
-function findRawQuoteSpanInMarkdown(markdown: string, quote: string): { start: number; end: number } | null {
-  const anchor = findQuoteAnchorInMarkdown(markdown, quote);
-  if (!anchor) return null;
-  return { start: anchor.rawStart, end: anchor.rawEnd };
 }
 
 type QuoteAnchor = {
@@ -613,6 +611,12 @@ function findQuoteAnchorInMarkdown(markdown: string, quote: string): QuoteAnchor
   };
 }
 
+function findRawQuoteSpanInMarkdown(markdown: string, quote: string): { start: number; end: number } | null {
+  const anchor = findQuoteAnchorInMarkdown(markdown, quote);
+  if (!anchor) return null;
+  return { start: anchor.rawStart, end: anchor.rawEnd };
+}
+
 function findQuoteSpanInMarkdown(markdown: string, quote: string): { start: number; end: number } | null {
   const anchor = findQuoteAnchorInMarkdown(markdown, quote);
   if (!anchor) return null;
@@ -663,6 +667,67 @@ function buildAcceptedSuggestionMarkdown(markdown: string, suggestion: StoredMar
   }
 
   return markdown;
+}
+
+function toStructuredMutationFailureResult(
+  failure: ProofMarkRehydrationFailure,
+  fallbackAnchorMessage: string,
+): EngineExecutionResult {
+  const details = failure.missingRequiredMarkIds.length > 0
+    ? { missingMarkIds: failure.missingRequiredMarkIds }
+    : {};
+  switch (failure.code) {
+    case 'MARKDOWN_PARSE_FAILED':
+      return {
+        status: 422,
+        body: {
+          success: false,
+          code: 'INVALID_MARKDOWN',
+          error: failure.error,
+          ...details,
+        },
+      };
+    case 'MARK_NOT_HYDRATED':
+      return {
+        status: 409,
+        body: {
+          success: false,
+          code: 'MARK_NOT_HYDRATED',
+          error: fallbackAnchorMessage,
+          ...details,
+        },
+      };
+    case 'REQUIRED_MARKS_MISSING':
+      return {
+        status: 409,
+        body: {
+          success: false,
+          code: 'MARK_REHYDRATION_INCOMPLETE',
+          error: failure.error,
+          ...details,
+        },
+      };
+    case 'STRUCTURED_MUTATION_FAILED':
+      return {
+        status: 409,
+        body: {
+          success: false,
+          code: 'STRUCTURED_MUTATION_FAILED',
+          error: failure.error,
+          ...details,
+        },
+      };
+    default:
+      return {
+        status: 409,
+        body: {
+          success: false,
+          code: 'MARK_REHYDRATION_FAILED',
+          error: failure.error,
+          ...details,
+        },
+      };
+  }
 }
 
 function readState(slug: string): EngineExecutionResult {
@@ -903,7 +968,10 @@ function updateSuggestionStatus(
     };
   }
 
-  marks[markId] = { ...existing, status };
+  const nextMarks: Record<string, StoredMark> = {
+    ...marks,
+    [markId]: { ...existing, status },
+  };
   let nextMarkdown = doc.markdown;
 
   if (status === 'accepted' && (existing.kind === 'insert' || existing.kind === 'delete' || existing.kind === 'replace')) {
@@ -918,7 +986,7 @@ function updateSuggestionStatus(
     slug,
     doc.updated_at,
     nextMarkdown,
-    marks as unknown as Record<string, unknown>,
+    nextMarks as unknown as Record<string, unknown>,
   );
   if (!ok) {
     return {
@@ -945,7 +1013,7 @@ function updateSuggestionStatus(
     const collabMarkdown = updated?.markdown ?? nextMarkdown;
     void applyCanonicalDocumentToCollab(slug, {
       markdown: collabMarkdown,
-      marks: marks as unknown as Record<string, unknown>,
+      marks: nextMarks as unknown as Record<string, unknown>,
       source: 'engine',
     }).catch((error) => {
       console.error('[document-engine] Failed to sync suggestion status to collab projection; invalidating collab state', { slug, status, error });
@@ -966,7 +1034,7 @@ function updateSuggestionStatus(
       updatedAt: updated?.updated_at ?? new Date().toISOString(),
       content: updated?.markdown ?? nextMarkdown,
       markdown: updated?.markdown ?? nextMarkdown,
-      marks,
+      marks: nextMarks,
     },
   };
 }
@@ -975,6 +1043,7 @@ async function addSuggestionAsync(
   slug: string,
   body: JsonRecord,
   kind: 'insert' | 'delete' | 'replace',
+  context?: AsyncDocumentMutationContext,
 ): Promise<EngineExecutionResult> {
   const requestedStatus = typeof body.status === 'string' ? body.status.trim().toLowerCase() : 'pending';
   if (!requestedStatus || requestedStatus === 'pending') {
@@ -991,8 +1060,9 @@ async function addSuggestionAsync(
     };
   }
 
-  const doc = getCanonicalReadableDocument(slug);
-  if (!doc) return { status: 404, body: { success: false, error: 'Document not found' } };
+  const ready = getMutationReadyDocument(slug, context);
+  if (ready.error) return ready.error;
+  const doc = ready.doc;
   const by = typeof body.by === 'string' && body.by.trim() ? body.by.trim() : 'ai:unknown';
   let quote = normalizeQuote(body.quote);
   if (!quote && isRecord(body.selector) && typeof body.selector.quote === 'string') {
@@ -1033,19 +1103,23 @@ async function addSuggestionAsync(
     ...(providedRange ? { range: providedRange } : {}),
   };
 
-  const acceptedMarkdown = buildAcceptedSuggestionMarkdown(doc.markdown, suggestion);
-  if (acceptedMarkdown === null) {
-    return { status: 409, body: { success: false, error: 'Suggestion anchor quote not found in document' } };
+  const structuredAccepted = await finalizeSuggestionThroughRehydration({
+    markdown: doc.markdown,
+    marks: {
+      ...marks,
+      [id]: { ...suggestion, status: 'pending' },
+    },
+    markId: id,
+    action: 'accept',
+  });
+  if (!structuredAccepted.ok) {
+    return toStructuredMutationFailureResult(structuredAccepted, 'Suggestion anchor quote not found in document');
   }
 
-  const nextMarks = {
-    ...marks,
-    [id]: suggestion,
-  };
   const mutation = await mutateCanonicalDocument({
     slug,
-    nextMarkdown: acceptedMarkdown,
-    nextMarks: nextMarks as unknown as Record<string, unknown>,
+    nextMarkdown: structuredAccepted.markdown,
+    nextMarks: structuredAccepted.marks as unknown as Record<string, unknown>,
     source: `engine:suggestion.add.accepted:${by}`,
     baseRevision: doc.revision,
     strictLiveDoc: true,
@@ -1085,12 +1159,11 @@ async function updateSuggestionStatusAsync(
   slug: string,
   body: JsonRecord,
   status: 'accepted' | 'rejected',
+  context?: AsyncDocumentMutationContext,
 ): Promise<EngineExecutionResult> {
-  if (status !== 'accepted') return updateSuggestionStatus(slug, body, status);
-
-  const doc = getCanonicalReadableDocument(slug);
-  if (!doc) return { status: 404, body: { success: false, error: 'Document not found' } };
-  if (!isCanonicalReadMutationReady(doc)) return projectionStaleMutationResult();
+  const ready = getMutationReadyDocument(slug, context);
+  if (ready.error) return ready.error;
+  const doc = ready.doc;
   const markId = typeof body.markId === 'string' ? body.markId : '';
   if (!markId) return { status: 400, body: { success: false, error: 'Missing markId' } };
 
@@ -1130,19 +1203,20 @@ async function updateSuggestionStatusAsync(
     return updateSuggestionStatus(slug, body, status);
   }
 
-  const acceptedMarkdown = buildAcceptedSuggestionMarkdown(doc.markdown, existing);
-  if (acceptedMarkdown === null) {
-    return { status: 409, body: { success: false, error: 'Suggestion anchor quote not found in document' } };
+  const structuredResult = await finalizeSuggestionThroughRehydration({
+    markdown: doc.markdown,
+    marks,
+    markId,
+    action: status === 'accepted' ? 'accept' : 'reject',
+  });
+  if (!structuredResult.ok) {
+    return toStructuredMutationFailureResult(structuredResult, 'Suggestion anchor quote not found in document');
   }
 
-  const nextMarks = {
-    ...marks,
-    [markId]: { ...existing, status },
-  };
   const mutation = await mutateCanonicalDocument({
     slug,
-    nextMarkdown: acceptedMarkdown,
-    nextMarks: nextMarks as unknown as Record<string, unknown>,
+    nextMarkdown: structuredResult.markdown,
+    nextMarks: structuredResult.marks as unknown as Record<string, unknown>,
     source: `engine:${status}:${actor}`,
     baseRevision: doc.revision,
     strictLiveDoc: true,
@@ -1283,18 +1357,22 @@ export async function executeDocumentOperationAsync(
   method: string,
   routePath: string,
   body: JsonRecord = {},
+  context?: AsyncDocumentMutationContext,
 ): Promise<EngineExecutionResult> {
   if (method === 'POST' && routePath === '/marks/suggest-replace') {
-    return addSuggestionAsync(slug, body, 'replace');
+    return addSuggestionAsync(slug, body, 'replace', context);
   }
   if (method === 'POST' && routePath === '/marks/suggest-insert') {
-    return addSuggestionAsync(slug, body, 'insert');
+    return addSuggestionAsync(slug, body, 'insert', context);
   }
   if (method === 'POST' && routePath === '/marks/suggest-delete') {
-    return addSuggestionAsync(slug, body, 'delete');
+    return addSuggestionAsync(slug, body, 'delete', context);
   }
   if (method === 'POST' && routePath === '/marks/accept') {
-    return updateSuggestionStatusAsync(slug, body, 'accepted');
+    return updateSuggestionStatusAsync(slug, body, 'accepted', context);
+  }
+  if (method === 'POST' && routePath === '/marks/reject') {
+    return updateSuggestionStatusAsync(slug, body, 'rejected', context);
   }
   return executeDocumentOperation(slug, method, routePath, body);
 }

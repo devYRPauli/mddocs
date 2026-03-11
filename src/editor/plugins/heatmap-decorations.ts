@@ -17,6 +17,7 @@ import {
   getMarkColor,
   isHuman,
   isAI,
+  isSystem,
   type CommentData,
   type DeleteData,
   type InsertData,
@@ -127,6 +128,7 @@ function getAuthoredBlockColor(
 
   let human = 0;
   let ai = 0;
+  let system = 0;
 
   for (const mark of authored) {
     if (!blockIntersectsMark(blockFrom, blockTo, mark)) continue;
@@ -136,12 +138,15 @@ function getAuthoredBlockColor(
       human += overlap;
     } else if (isAI(mark.mark.by)) {
       ai += overlap;
+    } else if (isSystem(mark.mark.by)) {
+      system += overlap;
     }
   }
 
-  const unmarked = Math.max(0, blockTextLength - (human + ai));
+  const unmarked = Math.max(0, blockTextLength - (human + ai + system));
   ai += unmarked;
 
+  if (system > 0) return getMarkColor('system');
   if (human === 0 && ai === 0) return null;
   return ai >= human ? getMarkColor('ai') : getMarkColor('human');
 }
@@ -183,6 +188,7 @@ function getBlockStatus(
  * 4 colors total:
  * - Human (soft mint) - human-authored content
  * - AI (soft lavender) - AI-authored content
+ * - System (blue) - system-authored content
  * - Flagged (dusty rose) - needs attention, overrides authorship
  * - Comment (soft gold) - has discussion, overrides authorship
  */
