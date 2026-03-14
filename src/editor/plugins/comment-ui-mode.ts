@@ -1,7 +1,7 @@
 export type CommentUiMode = 'legacy' | 'v2' | 'auto';
 
 export const COMMENT_UI_MODE_QUERY_KEY = 'commentUi';
-export const COMMENT_UI_MODE_STORAGE_KEY = 'proof.commentUi';
+export const COMMENT_UI_MODE_STORAGE_KEY = 'proofeditor.commentUi';
 export const COMMENT_UI_MODE_WIDTH_FALLBACK_PX = 900;
 
 type ProofConfigWindow = Window & {

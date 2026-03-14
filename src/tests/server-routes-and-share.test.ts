@@ -1405,13 +1405,13 @@ async function runRoutePayloadValidationTests(): Promise<void> {
         const response = await get(baseUrl, `/api/documents/${slug}/collab-session`, {
           'x-share-token': accessToken,
           'x-forwarded-proto': 'https',
-          'x-forwarded-host': 'www.proof.com',
+          'x-forwarded-host': 'www.proofeditor.ai',
         });
         assert(response.status === 200, `Expected status 200, got ${response.status}`);
         const payload = await response.json();
         if (payload?.session) {
           const collabWsUrl = String(payload?.session?.collabWsUrl ?? '');
-          assert(collabWsUrl.startsWith('wss://www.proof.com'), `Expected forwarded collab ws URL, got ${collabWsUrl}`);
+          assert(collabWsUrl.startsWith('wss://www.proofeditor.ai'), `Expected forwarded collab ws URL, got ${collabWsUrl}`);
           assert(!collabWsUrl.includes('localhost'), `Expected forwarded collab ws URL without localhost, got ${collabWsUrl}`);
         } else {
           assert(payload?.collabAvailable === false, 'Expected collabAvailable=false when collab-session lacks session');

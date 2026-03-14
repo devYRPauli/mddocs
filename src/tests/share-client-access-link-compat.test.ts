@@ -18,25 +18,25 @@ async function run(): Promise<void> {
       success: true,
       role: 'viewer',
       accessToken: 'viewer-access-token',
-      webShareUrl: 'https://www.proof.com/d/test-slug?token=viewer-access-token',
+      webShareUrl: 'https://www.proofeditor.ai/d/test-slug?token=viewer-access-token',
     },
     {
       success: true,
       role: 'commenter',
       token: 'commenter-legacy-token',
-      webShareUrl: 'https://www.proof.com/d/test-slug?token=commenter-legacy-token',
+      webShareUrl: 'https://www.proofeditor.ai/d/test-slug?token=commenter-legacy-token',
     },
     {
       success: true,
       role: 'editor',
-      webShareUrl: 'https://www.proof.com/d/test-slug?token=missing-token',
+      webShareUrl: 'https://www.proofeditor.ai/d/test-slug?token=missing-token',
     },
   ];
 
   try {
     (globalThis as { window?: unknown }).window = {
       location: {
-        origin: 'https://www.proof.com',
+        origin: 'https://www.proofeditor.ai',
         pathname: '/d/test-slug',
         search: '?token=query-token',
       },

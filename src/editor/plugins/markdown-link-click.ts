@@ -11,7 +11,7 @@ const AFFORDANCE_HIDE_DELAY_MS = 180;
 
 const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
 const HAS_SCHEME_RE = /^[a-zA-Z][a-zA-Z\d+.-]*:/;
-const FALLBACK_BASE_URL = 'https://proof.com/';
+const FALLBACK_BASE_URL = 'https://proofeditor.ai/';
 const HOVER_LINK_CLASS = 'markdown-link-hover-target';
 
 type ClosestCapable = {

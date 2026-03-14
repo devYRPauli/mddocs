@@ -12,7 +12,7 @@ const REQUIRED_HEADER_PROTOCOL = 'x-proof-client-protocol';
 const MIN_CLIENT_VERSION = '0.30.0';
 const MIN_CLIENT_PROTOCOL = 3;
 const SUPPORTED_PROTOCOLS = [3];
-const UPGRADE_URL = 'https://proof.com';
+const UPGRADE_URL = 'https://www.proofeditor.ai/download';
 
 function parseSemver(input: string): [number, number, number] | null {
   const match = input.trim().match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);

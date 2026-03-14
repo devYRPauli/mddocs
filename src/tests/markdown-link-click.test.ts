@@ -138,7 +138,7 @@ function testModifierAndCardState(): void {
 }
 
 function testNormalizeAndValidateHref(): void {
-  const base = 'https://proof.com/d/doc-1';
+  const base = 'https://proofeditor.ai/d/doc-1';
 
   assertEqual(
     normalizeAndValidateHref('https://example.com/path', base),
@@ -157,13 +157,13 @@ function testNormalizeAndValidateHref(): void {
   );
 
   const relativePath = normalizeAndValidateHref('/docs/getting-started', base);
-  assert(relativePath === 'https://proof.com/docs/getting-started', 'Relative links should normalize to same-origin URL');
+  assert(relativePath === 'https://proofeditor.ai/docs/getting-started', 'Relative links should normalize to same-origin URL');
 
   const queryOnly = normalizeAndValidateHref('?focus=1', base);
-  assert(queryOnly === 'https://proof.com/d/doc-1?focus=1', 'Query-only links should stay same-origin');
+  assert(queryOnly === 'https://proofeditor.ai/d/doc-1?focus=1', 'Query-only links should stay same-origin');
 
   const fragment = normalizeAndValidateHref('#intro', base);
-  assert(fragment === 'https://proof.com/d/doc-1#intro', 'Fragment links should be allowed');
+  assert(fragment === 'https://proofeditor.ai/d/doc-1#intro', 'Fragment links should be allowed');
 
   assertEqual(
     normalizeAndValidateHref('//evil.example/path', base),

@@ -55,8 +55,8 @@ function getCookieDomain(req: Request): string | null {
     ? forwardedHost.split(',')[0]
     : req.get('host') || '').trim().toLowerCase();
   const host = rawHost.split(':')[0] || rawHost;
-  if (host === 'proof.com' || host === 'www.proof.com') {
-    return '.proof.com';
+  if (host === 'proofeditor.ai' || host === 'www.proofeditor.ai') {
+    return '.proofeditor.ai';
   }
   return null;
 }
