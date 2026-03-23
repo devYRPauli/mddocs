@@ -95,7 +95,7 @@ import { adaptMutationResponse } from './mutation-coordinator.js';
 import {
   annotateRewriteDisruptionMetadata,
   classifyRewriteBarrierFailureReason,
-  evaluateRewriteLiveClientGate,
+  evaluateRewriteLiveClientGateWithOptions,
   isHostedRewriteEnvironment,
   rewriteBarrierFailedResponseBody,
   rewriteBlockedResponseBody,
@@ -2199,7 +2199,8 @@ agentRoutes.post('/:slug/quarantine', async (req: Request, res: Response) => {
     reason,
     accessEpoch: result.accessEpoch,
     links: {
-      state: `/api/agent/${slug}/state`,
+      state: `/documents/${slug}/state`,
+      agentState: `/api/agent/${slug}/state`,
       repair: { method: 'POST', href: `/api/agent/${slug}/repair` },
       cloneFromCanonical: { method: 'POST', href: `/api/agent/${slug}/clone-from-canonical` },
     },
@@ -3192,6 +3193,7 @@ agentRoutes.post('/:slug/ops', async (req: Request, res: Response) => {
 
   const participationBody = { ...asPayload(req.body), ...payload };
   ensureAgentPresenceForAuthenticatedCall(req, slug, participationBody, 'ops.request');
+  const requestId = readRequestId(req);
 
   const replay = await maybeReplayIdempotentMutation(req, res, slug, mutationRoute, routeKey);
   if (replay.handled) return;
@@ -3234,7 +3236,10 @@ agentRoutes.post('/:slug/ops', async (req: Request, res: Response) => {
       failOps(400, { success: false, error: rewriteValidationError }, 'invalid_rewrite_payload');
       return;
     }
-    rewriteGate = evaluateRewriteLiveClientGate(slug, payload);
+    rewriteGate = evaluateRewriteLiveClientGateWithOptions(slug, payload, {
+      route: mutationRoute,
+      requestId,
+    });
     if (rewriteGate.blocked) {
       recordRewriteLiveClientBlock(
         mutationRoute,
@@ -3684,7 +3689,10 @@ agentRoutes.post('/:slug/rewrite', async (req: Request, res: Response) => {
     failRewrite(400, { success: false, error: rewriteValidationError }, 'invalid_rewrite_payload');
     return;
   }
-  const rewriteGate = evaluateRewriteLiveClientGate(slug, payload);
+  const rewriteGate = evaluateRewriteLiveClientGateWithOptions(slug, payload, {
+    route: mutationRoute,
+    requestId: readRequestId(req),
+  });
   res.setHeader('X-Proof-Agent-Routes', '1');
   res.setHeader('X-Proof-Rewrite-Hosted', rewriteGate.hostedRuntime ? '1' : '0');
   res.setHeader('X-Proof-Rewrite-Blocked', rewriteGate.blocked ? '1' : '0');

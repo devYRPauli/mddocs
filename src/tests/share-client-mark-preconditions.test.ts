@@ -40,7 +40,26 @@ async function run(): Promise<void> {
 
     if (url.pathname === '/api/agent/test-doc/state') {
       stateReads += 1;
+      if (stateReads === 1) {
+        return jsonResponse({
+          mutationBase: {
+            token: 'mt1:test-token-1',
+            source: 'persisted_yjs',
+            schemaVersion: 'mt1',
+          },
+          revision: 41,
+          updatedAt: '2026-03-06T00:00:01.000Z',
+        });
+      }
       if (stateReads === 2) {
+        return jsonResponse({
+          mutationReady: false,
+          readSource: 'yjs_fallback',
+          updatedAt: null,
+          revision: null,
+        });
+      }
+      if (stateReads === 3) {
         return jsonResponse({ updatedAt: '2026-03-06T00:00:00.000Z' });
       }
       return jsonResponse({ revision: 40 + stateReads, updatedAt: `2026-03-06T00:00:0${stateReads}.000Z` });
@@ -68,23 +87,23 @@ async function run(): Promise<void> {
     assert.equal((unresolve && 'error' in unresolve) ? false : unresolve?.success, true, 'unresolveComment should succeed');
 
     const acceptRequest = requests.find((request) => request.path === '/api/agent/test-doc/marks/accept');
-    assert.equal(acceptRequest?.body?.baseRevision, 41, 'acceptSuggestion should include baseRevision from /state');
+    assert.equal(acceptRequest?.body?.baseToken, 'mt1:test-token-1', 'acceptSuggestion should prefer baseToken from /state');
 
     const rejectRequest = requests.find((request) => request.path === '/api/agent/test-doc/marks/reject');
     assert.equal(
       rejectRequest?.body?.baseUpdatedAt,
       '2026-03-06T00:00:00.000Z',
-      'rejectSuggestion should fall back to baseUpdatedAt when revision is unavailable',
+      'rejectSuggestion should retry stale /state reads and fall back to baseUpdatedAt when revision is unavailable',
     );
 
     const resolveRequest = requests.find((request) => request.path === '/api/agent/test-doc/marks/resolve');
-    assert.equal(resolveRequest?.body?.baseRevision, 43, 'resolveComment should include baseRevision from /state');
+    assert.equal(resolveRequest?.body?.baseRevision, 44, 'resolveComment should include baseRevision from /state');
 
     const unresolveRequest = requests.find((request) => request.path === '/api/agent/test-doc/marks/unresolve');
-    assert.equal(unresolveRequest?.body?.baseRevision, 44, 'unresolveComment should include baseRevision from /state');
+    assert.equal(unresolveRequest?.body?.baseRevision, 45, 'unresolveComment should include baseRevision from /state');
 
     const stateRequestCount = requests.filter((request) => request.path === '/api/agent/test-doc/state').length;
-    assert.equal(stateRequestCount, 4, 'each share mark mutation should read the latest mutation base');
+    assert.equal(stateRequestCount, 5, 'stale /state reads should be retried until a usable mutation base is available');
 
     console.log('share-client-mark-preconditions.test.ts passed');
   } finally {

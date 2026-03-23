@@ -40,6 +40,9 @@ async function main(): Promise<void> {
   const app = express();
   const server = createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });
+  wss.on('error', (error) => {
+    console.error('[server] WebSocketServer error (non-fatal):', error);
+  });
   const allowedCorsOrigins = parseAllowedCorsOrigins();
 
   app.use(express.json({ limit: '10mb' }));
