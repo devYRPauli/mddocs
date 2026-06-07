@@ -47,4 +47,21 @@ describe('reanchorMarks', () => {
     const got = res.marks[c.id] as unknown as { range: { from: number; to: number } }
     expect(got.range).toEqual({ from, to })
   })
+
+  it('orphaned entries carry the id from the map key even when the stored value lacks id', () => {
+    // simulate a StoredMark parsed from JSON: id is the map key, NOT a field on the value
+    const stored = { kind: 'comment', by: 'human:me', at: '2026-06-07T00:00:00Z', quote: 'gone gone gone phrase', data: { text: 'x', resolved: false } } as unknown as StoredMark
+    const res = reanchorMarks('completely unrelated content', { 'mark-123': stored })
+    expect(res.marks['mark-123']).toBeDefined()
+    expect(res.orphaned).toHaveLength(1)
+    expect(res.orphaned[0].id).toBe('mark-123')
+  })
+
+  it('falls back to resolveMark for a mark with no quote (uses range)', () => {
+    const stored = { kind: 'comment', by: 'human:me', at: '2026-06-07T00:00:00Z', quote: '', range: { from: 0, to: 4 }, data: { text: 'x', resolved: false } } as unknown as StoredMark
+    const res = reanchorMarks('hello world', { 'm1': stored })
+    // resolveMark: no quote, but range { from:0, to:4 } is valid in-bounds (0..4 within length 11) → keeps it, not orphaned
+    expect(res.orphaned).toHaveLength(0)
+    expect(res.marks['m1']).toBeDefined()
+  })
 })

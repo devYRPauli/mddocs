@@ -20,14 +20,16 @@ export function reanchorMarks(
 
     if (quote && quote.length > 0) {
       if (rangeMatchesQuote(content, mark.range, quote)) {
-        out[id] = { ...mark, orphaned: false } as unknown as StoredMark
+        out[id] = { ...mark, id, orphaned: false } as unknown as StoredMark
         continue
       }
+      // NOTE: if the quote appears multiple times, resolveQuote returns the FIRST occurrence (M1 limitation).
+      // NOTE: resolveQuote has a fuzzy (30-char prefix) fallback tier that can re-anchor to an unrelated passage; acceptable for M1.
       const found = resolveQuote(content, quote)
       if (found) {
-        out[id] = { ...mark, range: { from: found.from, to: found.to }, orphaned: false } as unknown as StoredMark
+        out[id] = { ...mark, id, range: { from: found.from, to: found.to }, orphaned: false } as unknown as StoredMark
       } else {
-        const flagged = { ...mark, orphaned: true }
+        const flagged = { ...mark, id, orphaned: true }
         out[id] = flagged as unknown as StoredMark
         orphaned.push(flagged)
       }
@@ -37,11 +39,11 @@ export function reanchorMarks(
     // No quote: fall back to resolveMark (range-or-null).
     const resolved = resolveMark(content, mark)
     if (!resolved || resolved.orphaned) {
-      const flagged = { ...mark, orphaned: true }
+      const flagged = { ...mark, id, orphaned: true }
       out[id] = flagged as unknown as StoredMark
       orphaned.push(flagged)
     } else {
-      out[id] = { ...mark, range: { from: resolved.from, to: resolved.to }, orphaned: false } as unknown as StoredMark
+      out[id] = { ...mark, id, range: { from: resolved.from, to: resolved.to }, orphaned: false } as unknown as StoredMark
     }
   }
   return { marks: out, orphaned }
