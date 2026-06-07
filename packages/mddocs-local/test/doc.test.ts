@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, writeFile, readdir, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { loadDoc, saveDoc } from '../src/doc'
@@ -39,5 +39,13 @@ describe('loadDoc/saveDoc', () => {
     ])
     const doc = await loadDoc(p)
     expect(['# One', '# Two']).toContain(doc.content.trim())
+  })
+
+  it('cleans up the temp file when rename fails', async () => {
+    const p = join(dir, 'isdir.md')
+    await mkdir(p) // target is a directory → rename(tmp, p) will fail
+    await expect(saveDoc(p, '# x', {})).rejects.toThrow()
+    const entries = await readdir(dir)
+    expect(entries.some((e) => e.includes('.tmp-'))).toBe(false)
   })
 })

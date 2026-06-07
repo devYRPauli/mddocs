@@ -1,4 +1,4 @@
-import { readFile, writeFile, rename } from 'node:fs/promises'
+import { readFile, writeFile, rename, unlink } from 'node:fs/promises'
 import { extractMarks, embedMarks } from './proof'
 import type { LoadedDoc } from './types'
 import type { StoredMark } from './proof'
@@ -27,5 +27,10 @@ export async function saveDoc(
   const out = Object.keys(marks).length > 0 ? embedMarks(content, marks) : content
   const tmp = `${path}.tmp-${process.pid}-${Math.trunc(performance.now())}-${++_saveCounter}`
   await writeFile(tmp, out, 'utf8')
-  await rename(tmp, path)
+  try {
+    await rename(tmp, path)
+  } catch (err) {
+    await unlink(tmp).catch(() => undefined)
+    throw err
+  }
 }
