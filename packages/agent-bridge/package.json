@@ -1,0 +1,8 @@
+{
+  "name": "@proof/agent-bridge",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Proof SDK agent bridge protocol, client, and route helpers",
+  "exports": "./src/index.ts"
+}

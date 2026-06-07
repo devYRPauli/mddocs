@@ -1,0 +1,13 @@
+{
+  "name": "proof-example",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Reference demo app target for the future Proof SDK extraction",
+  "scripts": {
+    "demo:agent": "tsx examples/agent-http-bridge.ts"
+  },
+  "dependencies": {
+    "@proof/agent-bridge": "file:../../packages/agent-bridge"
+  }
+}
