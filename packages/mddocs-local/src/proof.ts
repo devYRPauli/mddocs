@@ -6,6 +6,7 @@ export {
   hasMarks,
   resolveMark,
   resolveQuote,
+  normalizeQuote,
   updateMarkRangesAfterEdit,
   createComment,
   createInsertSuggestion,
