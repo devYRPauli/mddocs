@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { dirname, join, resolve } from 'node:path'
 import { createSession, serve } from '../src/serve'
 import { loadDoc } from '../src/doc'
 import { createComment, embedMarks } from '../src/proof'
@@ -71,6 +73,35 @@ describe('serve HTTP contract (headless, no browser)', () => {
     expect(Object.keys(doc.marks)).toEqual([id])
     await handle.stop()
   })
+
+  // End-to-end against the REAL prebuilt @proof/editor artifact (Task 9).
+  // Skips automatically if dist/ has not been built.
+  const REAL_DIST = resolve(dirname(fileURLToPath(import.meta.url)), '../../../dist')
+  it.skipIf(!existsSync(join(REAL_DIST, 'index.html')))(
+    'hosts the real editor bundle: index.html + editor.js + api/config',
+    async () => {
+      const p = join(dir, 'doc.md')
+      await writeFile(p, '# Real\n\nbody')
+      const handle = await serve(p, { autocommit: false })
+
+      const index = await fetch(`${handle.url}/?apiPort=${handle.port}`)
+      expect(index.status).toBe(200)
+      expect(index.headers.get('content-type')).toContain('text/html')
+      const html = await index.text()
+      expect(html).toContain('id="editor"')
+      expect(html).toContain('assets/editor.js')
+
+      const js = await fetch(`${handle.url}/assets/editor.js`)
+      expect(js.status).toBe(200)
+      expect(js.headers.get('content-type')).toContain('javascript')
+
+      const cfg = await (await fetch(`${handle.url}/api/config`)).json()
+      expect(cfg.fileName).toBe('doc.md')
+      expect(cfg.newFile).toBe(false)
+
+      await handle.stop()
+    },
+  )
 
   it('serves static files from distDir and 404s the unknown', async () => {
     const distDir = await mkdtemp(join(tmpdir(), 'mddocs-dist-'))
