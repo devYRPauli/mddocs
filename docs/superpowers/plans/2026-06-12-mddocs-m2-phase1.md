@@ -43,11 +43,16 @@ shapes against the `CollabSessionInfo`/open-context contracts above.
 Boot Task 1 + Task 2 on one host/port; print the LAN `/d/:slug` URL. (M1 `open`
 stays untouched.)
 
-### Task 4 — Manual browser checkpoint
-Two tabs at the printed URL co-edit one file: presence shows, edits merge live,
-`notes.md` + `git log` reflect the result. Confirms the editor truly writes
-`getText('markdown')`/`getMap('marks')` (the one client-side assumption the
-headless tests can't observe).
+### Task 4 — Manual browser checkpoint  [LARGELY VALIDATED 2026-06-12]
+Drove the real editor in Chrome against `mddocs serve`. CONFIRMED: the editor
+mounts in collab mode via our bootstrap, sets the tab title from our `doc`
+("demo.md - Proof"), shows the share name prompt, and joins the file-seeded
+collab room (a headless collaborator on the same server saw the seeded content,
+and its edit persisted to the file + autocommitted). Surfaced + fixed two real
+bugs (assets under `/d/`, `/api` route prefix) now covered by regression tests.
+REMAINING (needs a human click — browser input is blocked at computer-use "read"
+tier): dismiss the name modal, confirm the document renders with content, type a
+sentence, and confirm it lands in the file (editor→Y.Doc→disk write path).
 
 ### Task 5 — Reconcile live ↔ async(git) merge
 Confirm M1's `resolveFooterConflictText` still resolves a git conflict produced
