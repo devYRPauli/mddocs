@@ -54,9 +54,14 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
   let boundPort = opts.port ?? 0
 
   async function serveStatic(urlPath: string, res: ServerResponse): Promise<void> {
-    // Any /d/:slug route serves the editor shell (a single-page app).
-    const isEditorRoute = urlPath === '/' || urlPath.startsWith('/d/')
-    const rel = isEditorRoute ? 'index.html' : urlPath.replace(/^\/+/, '')
+    // The bare /d/:slug document route serves the editor shell (SPA). Asset
+    // requests resolve relative to that route (e.g. /d/assets/editor.js), so we
+    // strip the /d/ prefix and serve them from dist. Anything else is a plain
+    // dist asset.
+    const isDocRoute = urlPath === '/' || /^\/d\/[^/]+\/?$/.test(urlPath)
+    const rel = isDocRoute
+      ? 'index.html'
+      : urlPath.replace(/^\/d\//, '').replace(/^\/+/, '')
     const target = normalize(join(distDir, rel))
     if (target !== distDir && !target.startsWith(distDir + '/')) {
       res.writeHead(403).end('Forbidden')
@@ -75,11 +80,12 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
     void (async () => {
       try {
         const urlPath = (req.url ?? '/').split('?')[0]
+        if (process.env.MDDOCS_DEBUG) console.error('[req]', req.method, req.url)
 
         // The editor fetches this once to enter collab mode. One response carries
         // the document, the collab session, and capabilities (see share-client
         // fetchOpenContext: doc + session + capabilities → collabClient.connect).
-        if (urlPath === `/documents/${slug}/open-context` && req.method === 'GET') {
+        if (urlPath === `/api/documents/${slug}/open-context` && req.method === 'GET') {
           const { content, marks } = await loadDoc(file)
           const collabWsUrl = `ws://${host}:${boundPort}`
           sendJson(res, 200, {
