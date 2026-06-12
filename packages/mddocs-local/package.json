@@ -12,10 +12,14 @@
   },
   "dependencies": {
     "@proof/core": "*",
-    "simple-git": "^3.25.0"
+    "@hocuspocus/server": "^2.15.2",
+    "simple-git": "^3.25.0",
+    "yjs": "^13.6.0"
   },
   "devDependencies": {
+    "@hocuspocus/provider": "^2.15.2",
     "vitest": "^2.0.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "ws": "^8.16.0"
   }
 }
