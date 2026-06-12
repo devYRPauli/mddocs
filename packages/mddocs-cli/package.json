@@ -6,7 +6,8 @@
   "bin": { "mddocs": "./src/bin.ts" },
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "mddocs-local": "*",
