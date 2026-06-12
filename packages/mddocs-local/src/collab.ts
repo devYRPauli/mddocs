@@ -1,7 +1,7 @@
 import { Hocuspocus } from '@hocuspocus/server'
 import { basename } from 'node:path'
 import { loadDoc } from './doc'
-import { createSession, type SessionOptions } from './serve'
+import { createSession, type Session, type SessionOptions } from './serve'
 import { embedMarks } from './proof'
 import type { StoredMark } from './proof'
 
@@ -21,18 +21,28 @@ export interface CollabServerHandle {
   stop(): Promise<void>
 }
 
-// Our own Hocuspocus server (NOT upstream server/collab.ts, which is hard-wired
-// to SQLite). The file + git stay canonical: the live Y.Doc is seeded from the
-// file and every settled change is persisted back through the M1 session path
-// (saveDoc atomic + reanchor + debounced git autocommit). See SPIKE-collab.md.
-export async function createCollabServer(
+export interface ConfiguredCollab {
+  /** Configured but NOT listening — attach via `hocuspocus.handleConnection`. */
+  hocuspocus: Hocuspocus
+  session: Session
+  slug: string
+}
+
+// Build our own Hocuspocus instance (NOT upstream server/collab.ts, which is
+// hard-wired to SQLite) with file-backed persistence hooks. The file + git stay
+// canonical: the live Y.Doc is seeded from the file, and every settled change is
+// persisted back through the M1 session path (saveDoc atomic + reanchor +
+// debounced git autocommit). See SPIKE-collab.md. Returned un-listened so it can
+// either listen standalone (createCollabServer) or attach to a shared HTTP
+// server's upgrade (serveShare).
+export async function configureCollab(
   file: string,
   opts: CollabServerOptions = {},
-): Promise<CollabServerHandle> {
+): Promise<ConfiguredCollab> {
   const slug = opts.slug ?? basename(file)
   const session = await createSession(file, opts)
 
-  const server = new Hocuspocus().configure({
+  const hocuspocus = new Hocuspocus().configure({
     port: opts.port ?? 0,
     debounce: opts.storeDebounceMs ?? 150,
     quiet: true,
@@ -62,15 +72,24 @@ export async function createCollabServer(
     },
   })
 
-  await server.listen()
-  const port = server.address.port
+  return { hocuspocus, session, slug }
+}
+
+// Standalone collab server on its own port (used by the headless test).
+export async function createCollabServer(
+  file: string,
+  opts: CollabServerOptions = {},
+): Promise<CollabServerHandle> {
+  const { hocuspocus, session, slug } = await configureCollab(file, opts)
+  await hocuspocus.listen()
+  const port = hocuspocus.address.port
 
   return {
     wsUrl: `ws://127.0.0.1:${port}`,
     port,
     slug,
     async stop() {
-      await server.destroy()
+      await hocuspocus.destroy()
       await session.stop()
     },
   }
