@@ -11,6 +11,7 @@ export {
   createComment,
   createInsertSuggestion,
   createReplaceSuggestion,
+  createDeleteSuggestion,
   acceptSuggestion,
   rejectSuggestion,
   resolveComment,
