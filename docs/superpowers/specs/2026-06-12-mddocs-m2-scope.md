@@ -94,14 +94,16 @@ mddocs serve <file> --share [--port <n>] [--host <ip>] [--no-autocommit]
 
 ## 4. Phased plan (spike-gated)
 
-**Phase 0 — De-risk the collab-runtime boundary (THE gate).**
-- Spike: can `createCollabRuntime()` / the Hocuspocus instance accept a custom
-  persistence hook (`onLoadDocument` seeds the Yjs doc from `loadDoc(file)`;
-  `onStoreDocument`/change → `createSession.persist`) **without** the SQLite
-  store? Trace `server/collab.ts` + `doc-store-sqlite` usage.
-- Output: `SPIKE-collab.md` — the exact seam, or an escalation if the runtime is
-  hard-wired to SQLite (fallback: thin our own y-websocket server around the Yjs
-  doc, still persisting via the M1 engine).
+**Phase 0 — De-risk the collab-runtime boundary (THE gate). ✅ DONE 2026-06-12.**
+- See `packages/mddocs-local/SPIKE-collab.md`. **Verdict: GREEN.**
+- Finding: `server/collab.ts` is hard-wired to a `better-sqlite3` singleton and
+  is **not** reusable file-canonically. BUT the editor's collab client is
+  `HocuspocusProvider`, `@hocuspocus/server` is already a dep, and its
+  `onLoadDocument`/`onStoreDocument` hooks are pluggable. So we stand up **our
+  own Hocuspocus server** with file-backed hooks → persist via the M1
+  `createSession` path; reuse `server/milkdown-headless.ts` for Yjs→markdown.
+- Net: the canonicity decision holds; the "own relay" option is now the
+  **primary** path. `server/collab.ts` + `doc-store-sqlite` are NOT reused.
 
 **Phase 1 — File-backed collab session (headless, TDD).**
 - `mddocs-local/src/collab.ts`: `createCollabServer(file, opts)` — boots the
