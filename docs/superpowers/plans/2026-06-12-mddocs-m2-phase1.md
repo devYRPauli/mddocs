@@ -54,7 +54,17 @@ REMAINING (needs a human click — browser input is blocked at computer-use "rea
 tier): dismiss the name modal, confirm the document renders with content, type a
 sentence, and confirm it lands in the file (editor→Y.Doc→disk write path).
 
-### Task 4.5 — Persist live CONTENT (not just marks)  [DISCOVERED via browser test; NEXT]
+### Task 4.5 — Persist live CONTENT (not just marks)  [DONE + browser-validated 2026-06-12]
+SHIPPED. `src/serialize.ts` converts the `prosemirror` fragment ↔ markdown via
+upstream's headless Milkdown (loaded behind a runtime specifier; @milkdown stays
+out of our typecheck) + y-prosemirror. `onLoadDocument` now seeds the fragment so
+editors render file content; `onStoreDocument` serializes the fragment (proof
+marks stripped) → `embedMarks` → session. Browser-confirmed: the real editor
+renders the seeded doc, and typed text ("Hello World!") persisted to the .md as
+markdown body + autocommitted. Headless tests cover seed + edit→disk. Original
+notes below.
+
+
 The browser test revealed the editor's canonical content lives in the
 `prosemirror` Y.XmlFragment, NOT `getText('markdown')` (which is only a one-way
 seed). So the current `onStoreDocument` persists marks correctly but not typed
