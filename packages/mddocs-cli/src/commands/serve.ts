@@ -12,7 +12,7 @@ export function registerServe(program: Command): void {
     .action(async (file: string, o: { port?: number; host?: string; autocommit?: boolean }) => {
       const autocommit = o.autocommit !== false
       if (autocommit && !(await isGitRepo(dirname(file)))) {
-        console.warn('mddocs: not a git repo — history/autocommit disabled. Run `mddocs init` + `git init` to enable.')
+        console.warn('mddocs: not a git repo - history/autocommit disabled. Run `mddocs init` + `git init` to enable.')
       }
       const handle = await serveShare(file, { port: o.port, host: o.host, autocommit })
       console.log(`mddocs: live session for ${file}`)

@@ -30,7 +30,7 @@ export interface CollabServerHandle {
 }
 
 export interface ConfiguredCollab {
-  /** Configured but NOT listening — attach via `hocuspocus.handleConnection`. */
+  /** Configured but NOT listening - attach via `hocuspocus.handleConnection`. */
   hocuspocus: Hocuspocus
   session: Session
   slug: string
@@ -56,7 +56,7 @@ export async function configureCollab(
     quiet: true,
 
     // Seed the shared doc from disk on first join. Content + marks both ride
-    // inside the Y.Doc (getText('markdown') / getMap('marks')) — the exact
+    // inside the Y.Doc (getText('markdown') / getMap('marks')) - the exact
     // fields the editor's collab client reads/writes.
     async onLoadDocument(data) {
       if (data.documentName !== slug) return data.document

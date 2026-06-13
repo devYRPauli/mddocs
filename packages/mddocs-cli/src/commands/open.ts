@@ -11,7 +11,7 @@ export function registerOpen(program: Command): void {
     .action(async (file: string, o: { port?: number; autocommit?: boolean }) => {
       const autocommit = o.autocommit !== false
       if (autocommit && !(await isGitRepo(dirname(file)))) {
-        console.warn('mddocs: not a git repo — history/autocommit disabled. Run `mddocs init` + `git init` to enable.')
+        console.warn('mddocs: not a git repo - history/autocommit disabled. Run `mddocs init` + `git init` to enable.')
       }
       const handle = await serve(file, { port: o.port, autocommit })
       // The editor enters CLI mode (loads/saves this file) only when ?apiPort= is set.

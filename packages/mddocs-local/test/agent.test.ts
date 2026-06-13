@@ -78,7 +78,7 @@ describe('M3 agent HTTP API', () => {
     const h = await serveShare(p, { autocommit: false, distDir: dist, storeDebounceMs: 60 })
     const base = h.url.replace(/\/d\/.*/, '')
 
-    // No token → 403.
+    // No token -> 403.
     const denied = await fetch(`${base}/api/agent/${h.slug}/state`)
     expect(denied.status).toBe(403)
 

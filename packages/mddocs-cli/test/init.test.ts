@@ -29,7 +29,7 @@ describe('init', () => {
     expect(attrs).toContain('*.md')
   })
 
-  it('is idempotent — does not duplicate the .md line on a second run', async () => {
+  it('is idempotent - does not duplicate the .md line on a second run', async () => {
     await inDir(async () => {
       await buildProgram().parseAsync(['node', 'mddocs', 'init'])
       await buildProgram().parseAsync(['node', 'mddocs', 'init'])

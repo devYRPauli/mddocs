@@ -10,6 +10,6 @@ export function openBrowser(url: string): void {
   try {
     spawn(cmd, args, { stdio: 'ignore', detached: true }).unref()
   } catch {
-    /* ignore — user can open the printed URL manually */
+    /* ignore - user can open the printed URL manually */
   }
 }

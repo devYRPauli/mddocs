@@ -5,7 +5,7 @@ import type { Node as ProsemirrorNode } from 'prosemirror-model'
 // Boundary to upstream's headless Milkdown (server/milkdown-headless.ts). It
 // builds the SAME ProseMirror schema + markdown serializer the browser editor
 // uses, and runs in plain Node. We load it via a runtime (variable) specifier so
-// our strict typecheck stays decoupled from @milkdown's types — this is the one
+// our strict typecheck stays decoupled from @milkdown's types - this is the one
 // place that touches it.
 interface HeadlessParser {
   schema: { nodeFromJSON(json: unknown): unknown }
@@ -31,7 +31,7 @@ async function getParser(): Promise<HeadlessParser> {
 
 // Remove proof* marks from ProseMirror JSON so document content serializes
 // cleanly. Marks (comments/suggestions/provenance) are persisted separately via
-// the Y.Doc marks map → the PROOF footer, so keeping them here would double-encode.
+// the Y.Doc marks map -> the PROOF footer, so keeping them here would double-encode.
 function stripProofMarks(json: unknown): unknown {
   if (Array.isArray(json)) return json.map(stripProofMarks)
   if (!json || typeof json !== 'object') return json

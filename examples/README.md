@@ -1,6 +1,6 @@
 # mddocs examples
 
-## `agent-reviewer.mjs` — a human + agent live demo
+## `agent-reviewer.mjs` - a human + agent live demo
 
 A minimal "reviewer agent" that uses the M3 agent HTTP API to comment on a live
 document. Its comments and suggestion appear in every connected human editor in
@@ -15,7 +15,7 @@ real time and are saved to the file + git, attributed to `ai:<model>`.
    npx tsx packages/mddocs-cli/src/bin.ts serve notes.md
    ```
 
-   `serve` prints an **agent API** block — copy the **base URL** and **token**.
+   `serve` prints an **agent API** block - copy the **base URL** and **token**.
 
 2. In another terminal, run the agent against that base URL + token:
 
@@ -32,4 +32,4 @@ real time and are saved to the file + git, attributed to `ai:<model>`.
    ```
 
 Everything the agent did is now in `notes.md` (in the `<!-- PROOF -->` footer)
-and committed to git — fully local, no hosted service.
+and committed to git - fully local, no hosted service.

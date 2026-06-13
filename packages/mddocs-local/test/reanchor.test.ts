@@ -60,7 +60,7 @@ describe('reanchorMarks', () => {
   it('falls back to resolveMark for a mark with no quote (uses range)', () => {
     const stored = { kind: 'comment', by: 'human:me', at: '2026-06-07T00:00:00Z', quote: '', range: { from: 0, to: 4 }, data: { text: 'x', resolved: false } } as unknown as StoredMark
     const res = reanchorMarks('hello world', { 'm1': stored })
-    // resolveMark: no quote, but range { from:0, to:4 } is valid in-bounds (0..4 within length 11) → keeps it, not orphaned
+    // resolveMark: no quote, but range { from:0, to:4 } is valid in-bounds (0..4 within length 11) -> keeps it, not orphaned
     expect(res.orphaned).toHaveLength(0)
     expect(res.marks['m1']).toBeDefined()
   })

@@ -111,7 +111,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 }
 
 // Boot the local editor host: static dist + the three /api routes the editor's
-// CLI mode (?apiPort=) drives. No browser is opened here — callers do that.
+// CLI mode (?apiPort=) drives. No browser is opened here - callers do that.
 export async function serve(path: string, opts: ServeOptions = {}): Promise<ServeHandle> {
   const session = await createSession(path, opts)
   const distDir = opts.distDir ?? DEFAULT_DIST

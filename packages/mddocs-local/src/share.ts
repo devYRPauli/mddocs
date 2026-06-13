@@ -17,7 +17,7 @@ export type ShareRole = 'editor' | 'commenter' | 'viewer'
 export interface ShareCapabilities { canRead: boolean; canComment: boolean; canEdit: boolean }
 
 export interface ShareServeHandle {
-  /** The edit link — what `mddocs serve` opens for the host. */
+  /** The edit link - what `mddocs serve` opens for the host. */
   url: string
   /** Tokenized links per role; share the one matching the access you want to grant. */
   links: Record<ShareRole, string>
@@ -100,7 +100,7 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
   }
 
   // A separate token authorizes the agent HTTP API (M3). It is not a WebSocket
-  // role — it gates /api/agent/* programmatic access.
+  // role - it gates /api/agent/* programmatic access.
   const agentToken = randomUUID()
 
   // Server-side write enforcement: a viewer's WebSocket connection is readOnly,
@@ -146,7 +146,7 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
 
         // The editor fetches this once to enter collab mode. One response carries
         // the document, the collab session, and capabilities (see share-client
-        // fetchOpenContext: doc + session + capabilities → collabClient.connect).
+        // fetchOpenContext: doc + session + capabilities -> collabClient.connect).
         if (urlPath === `/api/documents/${slug}/open-context` && req.method === 'GET') {
           const { content, marks } = await loadDoc(file)
           const role = roleForToken(tokenFromRequest(req))
@@ -171,7 +171,7 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
           return
         }
 
-        // M3 agent HTTP API — authorized by the agent token (x-share-token).
+        // M3 agent HTTP API - authorized by the agent token (x-share-token).
         if (urlPath.startsWith(`/api/agent/${slug}/`)) {
           if (tokenFromRequest(req) !== agentToken) {
             sendJson(res, 403, { error: 'invalid or missing agent token' })

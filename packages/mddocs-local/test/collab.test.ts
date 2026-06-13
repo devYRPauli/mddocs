@@ -36,7 +36,7 @@ function close(c: Client): void {
   c.socket.destroy()
 }
 
-// Append a paragraph to a client's `prosemirror` fragment — the same structure
+// Append a paragraph to a client's `prosemirror` fragment - the same structure
 // the real editor edits (content lives in the fragment, not getText('markdown')).
 function appendParagraph(c: Client, text: string): void {
   const frag = c.doc.getXmlFragment('prosemirror')

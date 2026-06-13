@@ -43,7 +43,7 @@ describe('loadDoc/saveDoc', () => {
 
   it('cleans up the temp file when rename fails', async () => {
     const p = join(dir, 'isdir.md')
-    await mkdir(p) // target is a directory → rename(tmp, p) will fail
+    await mkdir(p) // target is a directory -> rename(tmp, p) will fail
     await expect(saveDoc(p, '# x', {})).rejects.toThrow()
     const entries = await readdir(dir)
     expect(entries.some((e) => e.includes('.tmp-'))).toBe(false)

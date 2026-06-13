@@ -21,7 +21,7 @@ async function waitFor(pred: () => boolean | Promise<boolean>, timeoutMs = 15000
   }
 }
 
-describe('collab persists live editor CONTENT (prosemirror fragment → markdown)', () => {
+describe('collab persists live editor CONTENT (prosemirror fragment -> markdown)', () => {
   it('serializes the prosemirror fragment a client edits and writes markdown to disk', async () => {
     const p = join(dir, 'doc.md')
     await writeFile(p, '# Seed\n\nseeded body.\n')
@@ -32,7 +32,7 @@ describe('collab persists live editor CONTENT (prosemirror fragment → markdown
     const provider = new HocuspocusProvider({ websocketProvider: socket, name: server.slug, document: doc })
 
     // The joining client must receive the file content in the `prosemirror`
-    // fragment (seeded server-side) — this is what the editor renders.
+    // fragment (seeded server-side) - this is what the editor renders.
     const frag = doc.getXmlFragment('prosemirror')
     await waitFor(() => frag.toString().includes('seeded body'))
     expect(frag.toString()).toContain('Seed') // the heading too

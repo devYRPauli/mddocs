@@ -58,7 +58,7 @@ if (sentences.length === 0) {
 // sees them pop in one at a time.
 for (let i = 0; i < Math.min(3, sentences.length); i++) {
   const quote = sentences[i]
-  const text = remarks[i % remarks.length](quote.length > 40 ? quote.slice(0, 40) + '…' : quote)
+  const text = remarks[i % remarks.length](quote.length > 40 ? quote.slice(0, 40) + '...' : quote)
   const { id } = await api('/comment', { method: 'POST', body: JSON.stringify({ quote, text, model }) })
   console.log(`agent: commented on sentence ${i + 1} (${id})`)
   await sleep(1500)
@@ -71,4 +71,4 @@ const { id, kind } = await api('/suggest', {
   body: JSON.stringify({ quote: target, replace: target.replace(/\.$/, ' (revised).'), model }),
 })
 console.log(`agent: proposed a ${kind} suggestion on sentence 1 (${id})`)
-console.log('agent: done — check the editor; the comments/suggestion should be live.')
+console.log('agent: done - check the editor; the comments/suggestion should be live.')

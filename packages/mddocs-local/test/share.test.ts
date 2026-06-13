@@ -32,7 +32,7 @@ describe('serveShare bootstrap contract', () => {
     await writeFile(p, '# Shared\n\nlive body.')
     const h = await serveShare(p, { autocommit: false, distDir: dist })
 
-    // The editor's getApiBase() prefixes /api — the route must match exactly.
+    // The editor's getApiBase() prefixes /api - the route must match exactly.
     // The host's edit link carries the editor token.
     const r = await fetch(`${origin(h.url)}/api/documents/${h.slug}/open-context`, {
       headers: { 'x-share-token': tokenOf(h.links.editor) },
@@ -60,7 +60,7 @@ describe('serveShare bootstrap contract', () => {
     await h.stop()
   })
 
-  it('maps each share token to its role + capabilities; unknown/absent → viewer', async () => {
+  it('maps each share token to its role + capabilities; unknown/absent -> viewer', async () => {
     const p = join(dir, 'notes.md')
     await writeFile(p, '# Roles\n\nbody.')
     const h = await serveShare(p, { autocommit: false, distDir: dist })
@@ -100,7 +100,7 @@ describe('serveShare bootstrap contract', () => {
     expect(shell.headers.get('content-type')).toContain('text/html')
     expect(await shell.text()).toContain('id="editor"')
 
-    // The shell's relative asset resolves to /d/assets/editor.js — this must
+    // The shell's relative asset resolves to /d/assets/editor.js - this must
     // serve the JS bundle, NOT the HTML shell (the bug the browser caught).
     const asset = await fetch(`${origin(h.url)}/d/assets/editor.js`)
     expect(asset.status).toBe(200)
