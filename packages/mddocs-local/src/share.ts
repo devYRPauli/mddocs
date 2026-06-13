@@ -35,7 +35,7 @@ const CAPABILITIES: Record<ShareRole, ShareCapabilities> = {
   viewer: { canRead: true, canComment: false, canEdit: false },
 }
 
-const DEFAULT_DIST = resolve(dirname(fileURLToPath(import.meta.url)), '../../../dist')
+const DEFAULT_DIST = process.env.MDDOCS_DIST ?? resolve(dirname(fileURLToPath(import.meta.url)), '../../../dist')
 
 const CONTENT_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',

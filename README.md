@@ -14,8 +14,16 @@ model and browser editor, and adds a local-first, git-backed workflow, a
 command-line interface, a real-time collaboration server, and an agent HTTP API,
 all keeping the `.md` file plus git as the single source of truth.
 
-Note: `mddocs` is a working title. It is not yet on npm; for now you run it from
-source via `tsx` (see [Install](#install)).
+Install from npm:
+
+```bash
+npm install -g @devyrpauli/mddocs
+mddocs --help
+```
+
+Note: `mddocs` is a working title; the npm package is published under the
+`@devyrpauli` scope while the name is settled, and the command is `mddocs`. You
+can also run from source (see [Install from source](#install-from-source)).
 
 ## Why
 
@@ -54,7 +62,9 @@ server. `mddocs` takes a different approach:
 - Node 20+ (developed on v24)
 - git on your PATH (for history and multiplayer)
 
-## Install
+## Install from source
+
+For development, or to run the latest from the repo:
 
 ```bash
 git clone https://github.com/devYRPauli/mddocs.git

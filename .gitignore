@@ -75,3 +75,7 @@ test-results/
 package-lock.json
 CODEX-IMPLEMENT.md
 MOBILE-ACTION-BAR-PLAN.md
+
+# npm packaging build output
+publish/
+*.tgz
