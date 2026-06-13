@@ -63,13 +63,14 @@ server." `mddocs` takes the opposite bet:
 ## Install
 
 ```bash
-git clone <this-repo> mddocs
+git clone https://github.com/devYRPauli/mddocs.git
 cd mddocs
 npm install
+npm run build      # builds the browser editor bundle into dist/ (needed for open/serve)
 ```
 
-The browser editor is served from the prebuilt `dist/` bundle that ships with
-the repo. To rebuild it after upstream changes: `npm run build`.
+`npm run build` only needs to be re-run if you change the editor/`@proof/*`
+sources. The CLI itself runs straight from source via `tsx`.
 
 > Until the package is published, run the CLI through `tsx`:
 > ```bash
