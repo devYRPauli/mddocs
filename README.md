@@ -270,8 +270,29 @@ browser-interactive path is verified manually.
 - **M2 — live collaboration server** (real-time multiplayer, file + git canonical) ✅
 - **M2.5 — share links + roles** (editor/commenter/viewer, server-side viewer enforcement) ✅
 - **M3 — agent HTTP API** (read state, post comments/suggestions live) ✅
-- **Next:** agent direct-rewrite endpoint · per-agent tokens / rate limiting ·
-  publish as an installable `mddocs` binary.
+
+## Upcoming updates
+
+Contributions welcome — these are the next things on the list:
+
+- **Agent direct-rewrite endpoint** — let agents edit prose directly, not just
+  propose (v1 is propose-only; humans accept).
+- **Per-agent identity tokens + rate limiting** — instead of one shared agent
+  token, issue per-agent tokens and throttle them.
+- **Commenter-granularity enforcement** — currently viewers are enforced
+  server-side and the comment-vs-edit split is UI-gated; enforce it on the wire too.
+- **CLI `accept` applies the prose rewrite** — today `accept` records the
+  decision; applying the edit to the body is editor-only.
+- **Global mark→file index** — so id-only commands (`reply`/`resolve`/`accept`/
+  `reject`) no longer need an explicit `--file`.
+- **Presence / events for agents** — stream document events to agents.
+- **Publish as an installable `mddocs` binary** (npm) + a real project name.
+- **CI** — run both test suites on every push.
+- **Upstream the `@proof/core` TS2308 fix** ([proof-sdk#57](https://github.com/EveryInc/proof-sdk/pull/57))
+  and drop the local fork patch once merged.
+
+See [`docs/superpowers/`](docs/superpowers/) for the design specs and plans
+behind each milestone.
 
 ---
 
