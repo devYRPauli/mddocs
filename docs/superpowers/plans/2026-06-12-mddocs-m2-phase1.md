@@ -85,9 +85,19 @@ footer), and pulling `server/milkdown-headless` (@milkdown/* deps) into
 writing to the fragment via `prosemirrorToYXmlFragment` (mimics the editor) and
 asserting the file gets the markdown; then a browser re-test.
 
-### Task 5 — Reconcile live ↔ async(git) merge
-Confirm M1's `resolveFooterConflictText` still resolves a git conflict produced
-when a live session and an offline edit both touched the footer.
+### Task 5 — Reconcile live ↔ async(git) merge  [DONE 2026-06-12]
+`mddocs resolve <file>` unions a git-conflicted PROOF footer. A real-git test
+(live edit + offline edit → merge) exposed that `resolveFooterConflictText` only
+handled the conflict shape where the whole `<!-- PROOF -->` block is inside the
+conflict; real merges usually conflict only the differing JSON line. Reworked to
+reconstruct each full side (before + side + after) → both shapes resolve.
+
+### M2.5 — Share links + roles  [DONE 2026-06-12]
+`serveShare` mints a random token per role; open-context maps `x-share-token`
+(or `?token=`) → role → capabilities (editor=all, commenter=read+comment,
+viewer=read; absent/unknown → viewer). `mddocs serve` prints all three links.
+NOTE: capabilities gate the editor UI; server-side WS write-blocking for
+non-editors is a hardening follow-up.
 
 ---
 
