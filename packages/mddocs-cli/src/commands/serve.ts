@@ -16,8 +16,10 @@ export function registerServe(program: Command): void {
       }
       const handle = await serveShare(file, { port: o.port, host: o.host, autocommit })
       console.log(`mddocs: live session for ${file}`)
-      console.log(`  open / share:  ${handle.url}`)
-      console.log('  (everyone who opens the URL co-edits this file; Ctrl-C to stop)')
+      console.log(`  edit (you):   ${handle.links.editor}`)
+      console.log(`  comment link: ${handle.links.commenter}`)
+      console.log(`  view link:    ${handle.links.viewer}`)
+      console.log('  (share the link matching the access you want to grant; Ctrl-C to stop)')
       openBrowser(handle.url)
       process.on('SIGINT', () => { void handle.stop().then(() => process.exit(0)) })
     })

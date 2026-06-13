@@ -7,7 +7,7 @@ export type { Session, SessionOptions, ServeOptions, ServeHandle } from './serve
 export { createCollabServer, configureCollab } from './collab'
 export type { CollabServerOptions, CollabServerHandle, ConfiguredCollab } from './collab'
 export { serveShare } from './share'
-export type { ShareServeOptions, ShareServeHandle } from './share'
+export type { ShareServeOptions, ShareServeHandle, ShareRole, ShareCapabilities } from './share'
 export * from './types'
 export * as proof from './proof'
 export type { Mark, MarkKind, MarkRange, StoredMark } from './proof'

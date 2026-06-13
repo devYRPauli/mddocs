@@ -1,6 +1,7 @@
-import { createServer, type Server, type ServerResponse } from 'node:http'
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
+import { randomUUID } from 'node:crypto'
 import { dirname, join, normalize, resolve } from 'node:path'
 import { WebSocketServer } from 'ws'
 import { configureCollab, type CollabServerOptions } from './collab'
@@ -11,13 +12,24 @@ export interface ShareServeOptions extends CollabServerOptions {
   distDir?: string
 }
 
+export type ShareRole = 'editor' | 'commenter' | 'viewer'
+export interface ShareCapabilities { canRead: boolean; canComment: boolean; canEdit: boolean }
+
 export interface ShareServeHandle {
-  /** Page URL to open in a browser; enters the editor's share/collab mode. */
+  /** The edit link — what `mddocs serve` opens for the host. */
   url: string
+  /** Tokenized links per role; share the one matching the access you want to grant. */
+  links: Record<ShareRole, string>
   host: string
   port: number
   slug: string
   stop(): Promise<void>
+}
+
+const CAPABILITIES: Record<ShareRole, ShareCapabilities> = {
+  editor: { canRead: true, canComment: true, canEdit: true },
+  commenter: { canRead: true, canComment: true, canEdit: false },
+  viewer: { canRead: true, canComment: false, canEdit: false },
 }
 
 const DEFAULT_DIST = resolve(dirname(fileURLToPath(import.meta.url)), '../../../dist')
@@ -53,6 +65,26 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
   const { hocuspocus, session, slug } = await configureCollab(file, opts)
   let boundPort = opts.port ?? 0
 
+  // Per-role share tokens. The host opens the editor link; sharing the comment
+  // or view link grants only that role. An absent/unknown token gets the least
+  // privilege (viewer), so a leaked bare URL can't edit.
+  const tokens: Record<ShareRole, string> = {
+    editor: randomUUID(),
+    commenter: randomUUID(),
+    viewer: randomUUID(),
+  }
+  function roleForToken(token: string | undefined): ShareRole {
+    if (token === tokens.editor) return 'editor'
+    if (token === tokens.commenter) return 'commenter'
+    return 'viewer'
+  }
+  function tokenFromRequest(req: IncomingMessage): string | undefined {
+    const h = req.headers['x-share-token']
+    if (typeof h === 'string') return h
+    const q = (req.url ?? '').split('?')[1]
+    return q ? new URLSearchParams(q).get('token') ?? undefined : undefined
+  }
+
   async function serveStatic(urlPath: string, res: ServerResponse): Promise<void> {
     // The bare /d/:slug document route serves the editor shell (SPA). Asset
     // requests resolve relative to that route (e.g. /d/assets/editor.js), so we
@@ -87,6 +119,7 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
         // fetchOpenContext: doc + session + capabilities → collabClient.connect).
         if (urlPath === `/api/documents/${slug}/open-context` && req.method === 'GET') {
           const { content, marks } = await loadDoc(file)
+          const role = roleForToken(tokenFromRequest(req))
           const collabWsUrl = `ws://${host}:${boundPort}`
           sendJson(res, 200, {
             success: true,
@@ -95,15 +128,15 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
             session: {
               docId: slug,
               slug,
-              role: 'editor',
+              role,
               shareState: 'ACTIVE',
               accessEpoch: 1,
               syncProtocol: 'pm-yjs-v1',
               collabWsUrl,
-              token: 'local',
+              token: tokens[role],
               snapshotVersion: 1,
             },
-            capabilities: { canRead: true, canComment: true, canEdit: true },
+            capabilities: CAPABILITIES[role],
           })
           return
         }
@@ -127,8 +160,17 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
   const a = server.address()
   boundPort = typeof a === 'object' && a ? a.port : boundPort
 
+  const linkFor = (role: ShareRole) =>
+    `http://${host}:${boundPort}/d/${encodeURIComponent(slug)}?token=${tokens[role]}`
+  const links: Record<ShareRole, string> = {
+    editor: linkFor('editor'),
+    commenter: linkFor('commenter'),
+    viewer: linkFor('viewer'),
+  }
+
   return {
-    url: `http://${host}:${boundPort}/d/${encodeURIComponent(slug)}`,
+    url: links.editor,
+    links,
     host,
     port: boundPort,
     slug,

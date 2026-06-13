@@ -22,6 +22,9 @@ afterEach(async () => {
 function origin(url: string): string {
   return url.replace(/\/d\/.*/, '')
 }
+function tokenOf(link: string): string {
+  return new URL(link).searchParams.get('token') as string
+}
 
 describe('serveShare bootstrap contract', () => {
   it('open-context (under /api) returns a valid CollabSessionInfo + doc', async () => {
@@ -30,7 +33,10 @@ describe('serveShare bootstrap contract', () => {
     const h = await serveShare(p, { autocommit: false, distDir: dist })
 
     // The editor's getApiBase() prefixes /api — the route must match exactly.
-    const r = await fetch(`${origin(h.url)}/api/documents/${h.slug}/open-context`)
+    // The host's edit link carries the editor token.
+    const r = await fetch(`${origin(h.url)}/api/documents/${h.slug}/open-context`, {
+      headers: { 'x-share-token': tokenOf(h.links.editor) },
+    })
     expect(r.status).toBe(200)
     const payload = await r.json()
 
@@ -50,6 +56,35 @@ describe('serveShare bootstrap contract', () => {
     expect(typeof s.token).toBe('string')
     expect(s.token.length).toBeGreaterThan(0)
     expect(typeof s.snapshotVersion).toBe('number')
+
+    await h.stop()
+  })
+
+  it('maps each share token to its role + capabilities; unknown/absent → viewer', async () => {
+    const p = join(dir, 'notes.md')
+    await writeFile(p, '# Roles\n\nbody.')
+    const h = await serveShare(p, { autocommit: false, distDir: dist })
+    const oc = (token?: string) =>
+      fetch(
+        `${origin(h.url)}/api/documents/${h.slug}/open-context`,
+        token ? { headers: { 'x-share-token': token } } : undefined,
+      ).then((r) => r.json())
+
+    const ed = await oc(tokenOf(h.links.editor))
+    expect(ed.session.role).toBe('editor')
+    expect(ed.capabilities).toEqual({ canRead: true, canComment: true, canEdit: true })
+
+    const co = await oc(tokenOf(h.links.commenter))
+    expect(co.session.role).toBe('commenter')
+    expect(co.capabilities).toEqual({ canRead: true, canComment: true, canEdit: false })
+
+    const vi = await oc(tokenOf(h.links.viewer))
+    expect(vi.session.role).toBe('viewer')
+    expect(vi.capabilities).toEqual({ canRead: true, canComment: false, canEdit: false })
+
+    // Least privilege for a missing or bogus token (a leaked bare URL can't edit).
+    expect((await oc(undefined)).session.role).toBe('viewer')
+    expect((await oc('not-a-real-token')).session.role).toBe('viewer')
 
     await h.stop()
   })
