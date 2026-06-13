@@ -1,51 +1,205 @@
 # mddocs
 
-> **Local-first, git-native collaboration for Markdown — with a CLI.**
+> **Local-first, git-native collaboration for Markdown — with a CLI, real-time
+> multiplayer, and an agent API.**
 > Think "Google Docs for `.md` files" that lives in your repo: comments,
 > suggestions, authorship/provenance, and full history — stored *inside* the
-> Markdown file and versioned by plain git. No server required.
+> Markdown file and versioned by plain git. Humans and AI agents edit the same
+> document together, live. No hosted service.
 
 `mddocs` is a thin, self-hostable layer built on the MIT-licensed
 [`proof-sdk`](https://github.com/EveryInc/proof-sdk). It reuses Proof's
 battle-tested marks model and browser editor, and adds a **local-first,
-git-backed** workflow plus a **command-line interface** so humans and agents can
-collaborate on documents without a hosted service.
+git-backed** workflow, a **command-line interface**, a **real-time collaboration
+server**, and an **agent HTTP API** — all keeping the `.md` file + git as the
+single source of truth.
 
-> ⚠️ **`mddocs` is a placeholder name.** The project is at **Milestone 1 (M1)**:
-> a single-user / async-multiplayer, local-first editor + CLI. A live
-> collaboration **server (M2)** and an **agent HTTP API (M3)** are planned but
-> not yet built.
+> ⚠️ **`mddocs` is a placeholder name.** Not yet published to npm — run via `tsx`
+> (see [Install](#install)).
 
 ---
 
 ## Why
 
 Proof is a great collaborative Markdown editor, and `proof-sdk` is open-source —
-but the natural way to *self-host* collaboration is usually "stand up a server."
-`mddocs` takes the opposite bet:
+but the usual way to *self-host* collaboration is "stand up a database-backed
+server." `mddocs` takes the opposite bet:
 
 - **The file is the database.** Comments, suggestions, and provenance are
   serialized into a `<!-- PROOF … -->` JSON footer *inside the same `.md` file*.
   Open the file anywhere; the collaboration state travels with it.
-- **git is the sync + history layer.** Edits are ordinary commits. "Multiplayer"
-  is just branches and merges; a conflicted collaboration footer is resolved by
-  unioning everyone's marks (last-writer-wins per mark id).
-- **The CLI is a first-class client.** Add a comment, file a suggestion, or read
-  history without opening a browser — ideal for scripts and agents.
+- **git is the history + async-sync layer.** Edits are ordinary commits.
+  Async "multiplayer" is just branches and merges; a conflicted collaboration
+  footer is union-resolved by `mddocs resolve`.
+- **Live multiplayer is a relay, not a new source of truth.** `mddocs serve`
+  hosts a real-time session (Yjs over WebSocket); every settled change is written
+  straight back to the `.md` and auto-committed. The database never takes over.
+- **The CLI and HTTP API are first-class clients.** Add a comment, file a
+  suggestion, or read state without a browser — ideal for scripts and AI agents.
 
 ---
 
-## What you get in M1
+## What you get
 
 | Capability | How |
 |---|---|
-| Browser editor (comments, suggestions, provenance) | `mddocs open <file>` hosts the prebuilt `@proof/editor` on loopback |
-| Comments: add / list / reply / resolve | `mddocs comment …` |
-| Suggestions: replace / insert / delete + accept / reject | `mddocs suggest …`, `mddocs accept|reject …` |
-| Authorship & provenance | every mark records `by` (`human:<user>` / `ai:<model>`) and `at` |
+| Browser editor (comments, suggestions, provenance) | `mddocs open <file>` (single-user) · `mddocs serve <file>` (multiplayer) |
+| **Real-time multiplayer** with presence | `mddocs serve <file>` — everyone on the URL co-edits live; edits persist to the file + git |
+| **Role-based share links** (editor / commenter / viewer) | `serve` prints a link per role; viewers are **read-only, enforced server-side** |
+| **Agent HTTP API** | AI tools read state and post comments/suggestions live, attributed to `ai:<model>` |
+| Comments / suggestions from the terminal | `mddocs comment …`, `mddocs suggest …`, `mddocs accept|reject …` |
 | History & diff | `mddocs log <file>`, `mddocs diff <file> [rev]` (plain git underneath) |
-| Async multiplayer | edit on branches; conflicted footers union-merge automatically |
+| Async multiplayer + conflict resolution | edit on branches; `mddocs resolve <file>` unions a conflicted PROOF footer |
+| Authorship & provenance | every mark records `by` (`human:<user>` / `ai:<model>`) and `at` |
 | Re-anchoring | marks re-attach to their quoted text after external edits; unmatched marks are flagged orphaned, never dropped |
+
+---
+
+## Requirements
+
+- **Node 20+** (developed on v24)
+- **git** on your PATH (for history / multiplayer)
+
+## Install
+
+```bash
+git clone <this-repo> mddocs
+cd mddocs
+npm install
+```
+
+The browser editor is served from the prebuilt `dist/` bundle that ships with
+the repo. To rebuild it after upstream changes: `npm run build`.
+
+> Until the package is published, run the CLI through `tsx`:
+> ```bash
+> alias mddocs='npx tsx "$(pwd)/packages/mddocs-cli/src/bin.ts"'
+> ```
+> The examples below use `mddocs` as if it were installed on your PATH.
+
+---
+
+## Quickstart
+
+```bash
+# In a git repo holding your markdown:
+git init                       # if it isn't one already
+mddocs init                    # mark .md files as mddocs-managed (.gitattributes)
+
+# Single-user editing in the browser (comments/suggestions persist to the file):
+mddocs open notes.md
+
+# …or a live multiplayer session you can share on your LAN:
+mddocs serve notes.md          # prints role links + an agent API block; Ctrl-C to stop
+
+# …or collaborate straight from the terminal:
+mddocs comment add notes.md --quote "the API is fast" --text "cite a benchmark?"
+mddocs suggest      notes.md --quote "teh" --replace "the"
+mddocs accept       <suggestion-id> --file notes.md
+
+# History — it's just git:
+mddocs log  notes.md
+mddocs diff notes.md
+```
+
+---
+
+## Real-time multiplayer & sharing — `mddocs serve`
+
+```bash
+mddocs serve notes.md [--port <n>] [--host <ip>] [--no-autocommit]
+```
+
+Hosts a live editing session on one port: the browser editor, a Yjs/WebSocket
+collaboration channel, and the agent API. Everyone who opens the URL co-edits the
+same document in real time; every settled change is serialized back to `notes.md`
+and auto-committed to git. Use `--host 0.0.0.0` to share on your LAN.
+
+`serve` prints **three role links** — share the one matching the access you want
+to grant:
+
+| Link | Role | Can do |
+|---|---|---|
+| edit (you) | editor | read · comment · edit |
+| comment link | commenter | read · comment |
+| view link | viewer | read only |
+
+- An absent/unknown token gets the **least privilege** (viewer), so a leaked bare
+  URL can't edit.
+- **Viewers are enforced server-side**: a viewer's WebSocket connection is
+  read-only, so a crafted client still can't write. The commenter-vs-editor split
+  is gated in the editor UI (a comment is itself a write).
+
+---
+
+## Agent HTTP API (M3)
+
+A live `serve` session also exposes an HTTP API so AI agents can read the
+document and post comments/suggestions — appearing in every connected editor in
+real time and persisting to git, attributed to `ai:<model>`. `serve` prints the
+base URL and an **agent token**; send it as the `x-share-token` header.
+
+```
+GET  /api/agent/:slug/state                       → { content, marks }
+POST /api/agent/:slug/comment  { quote, text, model? }            → { id }
+POST /api/agent/:slug/suggest  { quote, replace|insert|delete, model? } → { id, kind }
+```
+
+```bash
+# Read the live document:
+curl -H "x-share-token: $TOKEN" http://127.0.0.1:<port>/api/agent/notes.md/state
+
+# Post a comment as an agent:
+curl -X POST -H "x-share-token: $TOKEN" -H 'content-type: application/json' \
+  -d '{"quote":"The latency is acceptable.","text":"Quantify — p50 or p99?","model":"claude-opus-4-8"}' \
+  http://127.0.0.1:<port>/api/agent/notes.md/comment
+```
+
+See [`examples/agent-reviewer.mjs`](examples/agent-reviewer.mjs) for a runnable
+"reviewer agent" and a human + agent walkthrough.
+
+---
+
+## Resolving merge conflicts — `mddocs resolve`
+
+When two people edit a document on different branches and you `git merge`, the
+prose merges normally but the `<!-- PROOF -->` footer can conflict. Union both
+sides' marks:
+
+```bash
+git merge other-branch         # may leave a conflicted footer
+mddocs resolve notes.md        # unions both sides' marks; on id collision, latest `at` wins
+git add notes.md && git commit
+```
+
+---
+
+## Command reference
+
+```
+mddocs open  <file> [--port <n>] [--no-autocommit]          single-user browser editor (loopback)
+mddocs serve <file> [--port <n>] [--host <ip>] [--no-autocommit]
+                                                            live multiplayer + role links + agent API
+mddocs init                                                 mark the repo as mddocs-managed
+mddocs resolve <file>                                       union a git-conflicted PROOF footer
+
+mddocs comment add  <file> --quote <q> --text <t>           add a comment anchored to <q>
+mddocs comment ls   <file> [--open|--resolved|--orphaned]
+mddocs comment reply <id> --text <t> --file <f>             reply in a comment thread
+mddocs comment resolve <id> --file <f>                      resolve a comment thread
+
+mddocs suggest <file> --quote <q> (--replace <c> | --insert <c> | --delete)
+mddocs accept  <id> --file <f>                              mark a suggestion accepted
+mddocs reject  <id> --file <f>                              mark a suggestion rejected
+
+mddocs log  <file>                                          commit history for a document
+mddocs diff <file> [rev]                                    changes vs working tree / a revision
+```
+
+> **Notes.** Id-only commands (`reply`/`resolve`/`accept`/`reject`) take an
+> explicit `--file` — a global mark→file index is a later milestone.
+> `accept`/`reject` record the decision on the mark (`status`); the prose rewrite
+> for an accepted suggestion is applied in the editor.
 
 ---
 
@@ -55,14 +209,26 @@ but the natural way to *self-host* collaboration is usually "stand up a server."
 mddocs/  (fork of the proof-sdk monorepo)
 ├── packages/doc-core      @proof/core    REUSED  — marks model, embed/extract, anchoring
 ├── packages/doc-editor    @proof/editor  REUSED  — browser editor (served from dist/)
-├── packages/mddocs-local  mddocs-local   NEW     — engine: load/save, reanchor, footer-merge, git, serve
+├── packages/mddocs-local  mddocs-local   NEW     — engine
+│     doc.ts        loadDoc / saveDoc (atomic, embed/extract)
+│     reanchor.ts   re-resolve marks against current text
+│     footer.ts     detect + union-resolve a conflicted PROOF footer
+│     git.ts        history / diff / commit (simple-git)
+│     serve.ts      single-user editor host (HTTP file API)
+│     collab.ts     file-backed Hocuspocus server (live relay)
+│     serialize.ts  prosemirror-fragment ↔ markdown (headless Milkdown boundary)
+│     share.ts      multiplayer host: role links + bootstrap + WS + agent routes
+│     agent.ts      agent operations over a live Hocuspocus DirectConnection
 └── packages/mddocs-cli    mddocs-cli     NEW     — commander CLI over the engine
 ```
 
-Every call into `@proof/core` is funnelled through a single adapter
-(`packages/mddocs-local/src/proof.ts`) so the SDK boundary lives in exactly one
-file. The engine is fully unit-tested; the CLI is integration-tested against
-real temp git repos.
+**Live multiplayer** reuses upstream's Yjs + Hocuspocus stack as an in-memory
+concurrency layer only; the resolved markdown + marks are persisted through the
+same engine path as the CLI (`saveDoc` + reanchor + debounced git commit). The
+editor's canonical content is the `prosemirror` Y.XmlFragment, which `serialize.ts`
+converts to/from markdown using upstream's headless Milkdown serializer. Every
+call into `@proof/core` is funnelled through one adapter
+(`packages/mddocs-local/src/proof.ts`).
 
 ### How data is stored
 
@@ -83,99 +249,29 @@ clean, diffable text.
 
 ---
 
-## Requirements
-
-- **Node 20+** (developed on v24)
-- **git** on your PATH (for history / multiplayer)
-
-## Install
-
-```bash
-git clone <this-repo> mddocs
-cd mddocs
-npm install
-```
-
-The browser editor is served from the prebuilt `dist/` bundle that ships with
-the repo. To rebuild it after upstream changes: `npm run build`.
-
-> While the package isn't published to npm yet, run the CLI through `tsx`:
-> ```bash
-> alias mddocs='npx tsx "$(pwd)/packages/mddocs-cli/src/bin.ts"'
-> ```
-> The examples below use `mddocs` as if it were installed on your PATH.
-
----
-
-## Quickstart
-
-```bash
-# 1. In a git repo holding your markdown:
-git init                       # if it isn't one already
-mddocs init                    # mark .md files as mddocs-managed (.gitattributes)
-
-# 2. Edit in the browser (comments/suggestions persist into the file):
-mddocs open notes.md           # prints a loopback URL and opens your browser
-                               # Ctrl-C to stop
-
-# 3. …or collaborate straight from the terminal:
-mddocs comment add notes.md --quote "the API is fast" --text "cite a benchmark?"
-mddocs comment ls   notes.md --open
-mddocs suggest      notes.md --quote "teh" --replace "the"
-mddocs accept       <suggestion-id> --file notes.md
-
-# 4. History — it's just git:
-mddocs log  notes.md
-mddocs diff notes.md
-```
-
-## Command reference (M1)
-
-```
-mddocs open <file> [--port <n>] [--no-autocommit]   host the browser editor on loopback
-mddocs init                                          mark the repo as mddocs-managed
-
-mddocs comment add  <file> --quote <q> --text <t>    add a comment anchored to <q>
-mddocs comment ls   <file> [--open|--resolved|--orphaned]
-mddocs comment reply <id> --text <t> --file <f>      reply in a comment thread
-mddocs comment resolve <id> --file <f>               resolve a comment thread
-
-mddocs suggest <file> --quote <q> (--replace <c> | --insert <c> | --delete)
-mddocs accept  <id> --file <f>                       mark a suggestion accepted
-mddocs reject  <id> --file <f>                       mark a suggestion rejected
-
-mddocs log  <file>                                   commit history for a document
-mddocs diff <file> [rev]                             changes vs working tree / a revision
-```
-
-> **M1 notes.** Id-only commands (`reply`/`resolve`/`accept`/`reject`) take an
-> explicit `--file` — a global mark→file index is a later milestone.
-> `accept`/`reject` record the decision on the mark (`status`); the prose rewrite
-> for an accepted suggestion is applied in the editor, not yet at the CLI.
-
----
-
 ## Development
 
 ```bash
-npm test  -w mddocs-local      # engine unit tests
-npm test  -w mddocs-cli        # CLI integration tests
+npm test  -w mddocs-local      # engine unit + integration tests (incl. headless collab/agent)
+npm test  -w mddocs-cli        # CLI integration tests against real temp git repos
 npm run typecheck -w mddocs-local
 npm run typecheck -w mddocs-cli
 ```
 
-The browser-interactive path (typing in the editor persists to disk) is verified
-manually — `mddocs open <file>`, edit, and watch the file change. Everything else
-(including the full editor HTTP contract and the file API) is covered by
-automated tests.
+The live collaboration and agent paths are covered headlessly (real
+`HocuspocusProvider` clients driven in-process — no browser needed); the
+browser-interactive path is verified manually.
 
 ---
 
 ## Roadmap
 
-- **M1 (this):** local-first editor + CLI, comments, suggestions, provenance, git history. ✅
-- **M2:** optional live-collaboration server (real-time multiplayer).
-- **M3:** agent HTTP API so AI tools can read/propose/comment programmatically.
+- **M1 — local-first editor + CLI** (comments, suggestions, provenance, git history) ✅
+- **M2 — live collaboration server** (real-time multiplayer, file + git canonical) ✅
+- **M2.5 — share links + roles** (editor/commenter/viewer, server-side viewer enforcement) ✅
+- **M3 — agent HTTP API** (read state, post comments/suggestions live) ✅
+- **Next:** agent direct-rewrite endpoint · per-agent tokens / rate limiting ·
+  publish as an installable `mddocs` binary.
 
 ---
 
