@@ -36,6 +36,17 @@ function close(c: Client): void {
   c.socket.destroy()
 }
 
+// Append a paragraph to a client's `prosemirror` fragment — the same structure
+// the real editor edits (content lives in the fragment, not getText('markdown')).
+function appendParagraph(c: Client, text: string): void {
+  const frag = c.doc.getXmlFragment('prosemirror')
+  const para = new Y.XmlElement('paragraph')
+  const t = new Y.XmlText()
+  t.insert(0, text)
+  para.insert(0, [t])
+  frag.insert(frag.length, [para])
+}
+
 describe('createCollabServer (file-backed relay)', () => {
   it('converges two clients and persists the merged doc to the file', async () => {
     const p = join(dir, 'doc.md')
@@ -45,18 +56,18 @@ describe('createCollabServer (file-backed relay)', () => {
     const a = connect(server.wsUrl, server.slug)
     const b = connect(server.wsUrl, server.slug)
 
-    // Both clients should receive the file-seeded content.
-    await waitFor(() => a.doc.getText('markdown').toString().includes('starting body'))
-    await waitFor(() => b.doc.getText('markdown').toString().includes('starting body'))
+    // Both clients receive the file-seeded content in the prosemirror fragment.
+    await waitFor(() => a.doc.getXmlFragment('prosemirror').toString().includes('starting body'))
+    await waitFor(() => b.doc.getXmlFragment('prosemirror').toString().includes('starting body'))
 
-    // Client A edits; client B must converge (realtime merge).
-    a.doc.getText('markdown').insert(0, '# Edited live\n\n')
-    await waitFor(() => b.doc.getText('markdown').toString().includes('# Edited live'))
+    // Client A edits the fragment; client B must converge (realtime merge).
+    appendParagraph(a, 'Edited live by A.')
+    await waitFor(() => b.doc.getXmlFragment('prosemirror').toString().includes('Edited live by A.'))
 
-    // And the edit must land on disk (the file stays canonical).
-    await waitFor(async () => (await readFile(p, 'utf8')).includes('# Edited live'))
+    // And the edit must land on disk as markdown (the file stays canonical).
+    await waitFor(async () => (await readFile(p, 'utf8')).includes('Edited live by A.'))
     const onDisk = await readFile(p, 'utf8')
-    expect(onDisk).toContain('# Edited live')
+    expect(onDisk).toContain('Edited live by A.')
     expect(onDisk).toContain('starting body')
 
     close(a)
@@ -76,10 +87,10 @@ describe('createCollabServer (file-backed relay)', () => {
 
     const server = await createCollabServer(p, { autocommit: true, storeDebounceMs: 60, debounceMs: 60 })
     const a = connect(server.wsUrl, server.slug)
-    await waitFor(() => a.doc.getText('markdown').toString().includes('# v1'))
+    await waitFor(() => a.doc.getXmlFragment('prosemirror').toString().includes('v1'))
 
-    a.doc.getText('markdown').insert(a.doc.getText('markdown').length, '\nlive paragraph\n')
-    await waitFor(async () => (await readFile(p, 'utf8')).includes('live paragraph'))
+    appendParagraph(a, 'live paragraph from collab.')
+    await waitFor(async () => (await readFile(p, 'utf8')).includes('live paragraph from collab.'))
 
     // The session's debounced autocommit should produce a new commit.
     await waitFor(async () => {

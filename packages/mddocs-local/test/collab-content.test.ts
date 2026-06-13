@@ -31,12 +31,14 @@ describe('collab persists live editor CONTENT (prosemirror fragment → markdown
     const socket = new HocuspocusProviderWebsocket({ url: server.wsUrl, WebSocketPolyfill: WebSocket as unknown as typeof WebSocket })
     const provider = new HocuspocusProvider({ websocketProvider: socket, name: server.slug, document: doc })
 
-    // Wait until joined (the seed reaches the markdown text type).
-    await waitFor(() => doc.getText('markdown').toString().includes('seeded body'))
-
-    // Mimic the real editor: content lives in the `prosemirror` Y.XmlFragment as
-    // ProseMirror nodes, not in getText('markdown').
+    // The joining client must receive the file content in the `prosemirror`
+    // fragment (seeded server-side) — this is what the editor renders.
     const frag = doc.getXmlFragment('prosemirror')
+    await waitFor(() => frag.toString().includes('seeded body'))
+    expect(frag.toString()).toContain('Seed') // the heading too
+
+    // Mimic the real editor making an edit in the fragment.
+    frag.delete(0, frag.length) // clear the seeded content first
     const para = new Y.XmlElement('paragraph')
     const text = new Y.XmlText()
     text.insert(0, 'Real editor content typed into the fragment.')

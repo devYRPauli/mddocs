@@ -1,5 +1,6 @@
-import { yXmlFragmentToProsemirrorJSON } from 'y-prosemirror'
+import { yXmlFragmentToProsemirrorJSON, prosemirrorToYXmlFragment } from 'y-prosemirror'
 import type { XmlFragment } from 'yjs'
+import type { Node as ProsemirrorNode } from 'prosemirror-model'
 
 // Boundary to upstream's headless Milkdown (server/milkdown-headless.ts). It
 // builds the SAME ProseMirror schema + markdown serializer the browser editor
@@ -8,6 +9,7 @@ import type { XmlFragment } from 'yjs'
 // place that touches it.
 interface HeadlessParser {
   schema: { nodeFromJSON(json: unknown): unknown }
+  parseMarkdown(markdown: string): unknown
 }
 interface HeadlessModule {
   getHeadlessMilkdownParser(): Promise<HeadlessParser>
@@ -57,4 +59,14 @@ export async function fragmentToMarkdown(fragment: XmlFragment): Promise<string 
   const node = parser.schema.nodeFromJSON(stripProofMarks(json))
   const mod = await getModule()
   return mod.serializeMarkdown(node)
+}
+
+// Seed an empty `prosemirror` Y.XmlFragment from markdown so every joining editor
+// renders the file's content (the editor itself does not seed it from our
+// bootstrap). No-op for blank markdown.
+export async function seedFragmentFromMarkdown(markdown: string, fragment: XmlFragment): Promise<void> {
+  if (markdown.trim() === '') return
+  const parser = await getParser()
+  const node = parser.parseMarkdown(markdown) as ProsemirrorNode
+  prosemirrorToYXmlFragment(node, fragment)
 }

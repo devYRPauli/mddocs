@@ -3,7 +3,7 @@ import { basename } from 'node:path'
 import { loadDoc } from './doc'
 import { createSession, type Session, type SessionOptions } from './serve'
 import { embedMarks } from './proof'
-import { fragmentToMarkdown } from './serialize'
+import { fragmentToMarkdown, seedFragmentFromMarkdown } from './serialize'
 import type { StoredMark } from './proof'
 
 export interface CollabServerOptions extends SessionOptions {
@@ -56,6 +56,10 @@ export async function configureCollab(
       const { content, marks } = await loadDoc(file)
       const ytext = data.document.getText('markdown')
       if (ytext.length === 0 && content.length > 0) ytext.insert(0, content)
+      // The editor renders content from the `prosemirror` fragment and does not
+      // seed it from our bootstrap, so seed it here from the file's markdown.
+      const frag = data.document.getXmlFragment('prosemirror')
+      if (frag.length === 0) await seedFragmentFromMarkdown(content, frag)
       const ymarks = data.document.getMap('marks')
       for (const [id, mark] of Object.entries(marks)) {
         if (!ymarks.has(id)) ymarks.set(id, mark as unknown as Record<string, unknown>)
