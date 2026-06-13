@@ -62,7 +62,6 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 export async function serveShare(file: string, opts: ShareServeOptions = {}): Promise<ShareServeHandle> {
   const host = opts.host ?? '127.0.0.1'
   const distDir = opts.distDir ?? DEFAULT_DIST
-  const { hocuspocus, session, slug } = await configureCollab(file, opts)
   let boundPort = opts.port ?? 0
 
   // Per-role share tokens. The host opens the editor link; sharing the comment
@@ -84,6 +83,15 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
     const q = (req.url ?? '').split('?')[1]
     return q ? new URLSearchParams(q).get('token') ?? undefined : undefined
   }
+
+  // Server-side write enforcement: a viewer's WebSocket connection is readOnly,
+  // so Hocuspocus drops its document updates even if a crafted client tries to
+  // write. Commenters/editors keep write access (a comment is itself a write);
+  // the comment-vs-edit split is gated in the editor UI via capabilities.
+  const { hocuspocus, session, slug } = await configureCollab(file, {
+    ...opts,
+    authenticate: (token) => ({ readOnly: roleForToken(token) === 'viewer' }),
+  })
 
   async function serveStatic(urlPath: string, res: ServerResponse): Promise<void> {
     // The bare /d/:slug document route serves the editor shell (SPA). Asset

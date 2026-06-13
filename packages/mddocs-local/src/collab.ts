@@ -12,6 +12,13 @@ export interface CollabServerOptions extends SessionOptions {
   slug?: string
   /** How long Hocuspocus waits after edits settle before persisting (ms). */
   storeDebounceMs?: number
+  /**
+   * Optional per-connection authentication. Maps the WebSocket token to its
+   * access; `readOnly: true` makes Hocuspocus drop all document writes from that
+   * connection (server-side enforcement). Return null to reject the connection.
+   * When omitted, connections are unauthenticated and read-write.
+   */
+  authenticate?: (token: string) => { readOnly: boolean } | null
 }
 
 export interface CollabServerHandle {
@@ -82,6 +89,19 @@ export async function configureCollab(
       const marks = data.document.getMap('marks').toJSON() as Record<string, StoredMark>
       await session.applyContent(embedMarks(markdown, marks))
     },
+
+    // Per-connection auth. Setting onAuthenticate makes Hocuspocus require a
+    // token; mapping it to readOnly drops that connection's writes server-side.
+    ...(opts.authenticate
+      ? {
+          async onAuthenticate(data) {
+            const verdict = opts.authenticate!(data.token)
+            if (!verdict) throw new Error('Unauthorized')
+            data.connection.readOnly = verdict.readOnly
+            return { readOnly: verdict.readOnly }
+          },
+        }
+      : {}),
   })
 
   return { hocuspocus, session, slug }
