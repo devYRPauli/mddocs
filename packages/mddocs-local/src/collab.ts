@@ -3,6 +3,7 @@ import { basename } from 'node:path'
 import { loadDoc } from './doc'
 import { createSession, type Session, type SessionOptions } from './serve'
 import { embedMarks } from './proof'
+import { fragmentToMarkdown } from './serialize'
 import type { StoredMark } from './proof'
 
 export interface CollabServerOptions extends SessionOptions {
@@ -62,11 +63,18 @@ export async function configureCollab(
       return data.document
     },
 
-    // Persist the settled doc back to the file (+ optional autocommit). Reuses
-    // the M1 session: embed marks into the markdown string, then applyContent.
+    // Persist the settled doc back to the file (+ optional autocommit). The
+    // editor's canonical content is the `prosemirror` Y.XmlFragment, so we
+    // serialize that to markdown; `getText('markdown')` is only the one-way seed
+    // and is used as a fallback before the editor populates the fragment. Marks
+    // come from the marks map. Reuses the M1 session (saveDoc + reanchor + commit).
     async onStoreDocument(data) {
       if (data.documentName !== slug) return
-      const markdown = data.document.getText('markdown').toString()
+      const fromFragment = await fragmentToMarkdown(data.document.getXmlFragment('prosemirror'))
+      const markdown = fromFragment ?? data.document.getText('markdown').toString()
+      // Never clobber the file with an empty doc (e.g. a client connected before
+      // the fragment was seeded).
+      if (markdown.trim() === '') return
       const marks = data.document.getMap('marks').toJSON() as Record<string, StoredMark>
       await session.applyContent(embedMarks(markdown, marks))
     },
