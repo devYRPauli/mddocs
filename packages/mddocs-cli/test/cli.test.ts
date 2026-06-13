@@ -6,7 +6,7 @@ describe('cli program', () => {
     const program = buildProgram()
     const names = program.commands.map((c) => c.name()).sort()
     expect(names).toEqual(
-      ['accept', 'comment', 'diff', 'init', 'log', 'open', 'reject', 'serve', 'suggest'].sort(),
+      ['accept', 'comment', 'diff', 'init', 'log', 'open', 'reject', 'resolve', 'serve', 'suggest'].sort(),
     )
   })
 })

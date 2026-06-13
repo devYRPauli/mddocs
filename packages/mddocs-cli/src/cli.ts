@@ -5,6 +5,7 @@ import { registerAcceptReject } from './commands/accept-reject'
 import { registerHistory } from './commands/history'
 import { registerOpen } from './commands/open'
 import { registerServe } from './commands/serve'
+import { registerResolve } from './commands/resolve'
 import { registerInit } from './commands/init'
 
 export function buildProgram(): Command {
@@ -16,6 +17,7 @@ export function buildProgram(): Command {
   registerSuggest(program)
   registerAcceptReject(program)
   registerHistory(program)
+  registerResolve(program)
   registerInit(program)
   return program
 }

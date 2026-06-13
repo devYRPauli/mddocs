@@ -27,21 +27,30 @@ function unionMarks(
 }
 
 // Resolve a git-conflicted PROOF footer by unioning the marks from both sides.
-// The prose body (identical on both sides of a footer-only conflict) is taken
-// from before the conflict block; the footer is rebuilt from the union.
+// Reconstructs each side as a full document (text before the conflict + that
+// side + text after) and runs extractMarks on each. This handles both shapes a
+// merge produces: the whole `<!-- PROOF ... -->` block inside the conflict, OR
+// (the common real-git case) only the differing JSON line conflicting while the
+// `<!-- PROOF` / `-->` lines stay outside it. The prose is identical on both
+// sides; the footer is rebuilt from the union.
 export function resolveFooterConflictText(raw: string): string {
   const match = raw.match(CONFLICT_RE)
-  if (!match) return raw
+  if (!match || match.index === undefined) return raw
 
-  const [oursRaw, theirsRaw] = match[0]
+  const before = raw.slice(0, match.index)
+  const after = raw.slice(match.index + match[0].length)
+
+  const [oursSide, theirsSide] = match[0]
     .replace(OURS_MARKER, '')
     .replace(THEIRS_MARKER, '')
     .split(SEPARATOR)
 
-  const ours = (extractMarks(oursRaw ?? '').marks ?? {}) as Record<string, StoredMark>
-  const theirs = (extractMarks(theirsRaw ?? '').marks ?? {}) as Record<string, StoredMark>
-  const merged = unionMarks(ours, theirs)
+  const oursDoc = extractMarks(before + (oursSide ?? '') + after)
+  const theirsDoc = extractMarks(before + (theirsSide ?? '') + after)
+  const merged = unionMarks(
+    (oursDoc.marks ?? {}) as Record<string, StoredMark>,
+    (theirsDoc.marks ?? {}) as Record<string, StoredMark>,
+  )
 
-  const prose = raw.slice(0, match.index ?? 0).replace(/\s+$/, '')
-  return embedMarks(prose, merged)
+  return embedMarks(oursDoc.content, merged)
 }
