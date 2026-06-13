@@ -54,6 +54,27 @@ REMAINING (needs a human click — browser input is blocked at computer-use "rea
 tier): dismiss the name modal, confirm the document renders with content, type a
 sentence, and confirm it lands in the file (editor→Y.Doc→disk write path).
 
+### Task 4.5 — Persist live CONTENT (not just marks)  [DISCOVERED via browser test; NEXT]
+The browser test revealed the editor's canonical content lives in the
+`prosemirror` Y.XmlFragment, NOT `getText('markdown')` (which is only a one-way
+seed). So the current `onStoreDocument` persists marks correctly but not typed
+content. Confirmed-feasible fix (all pieces verified in Node):
+- Warm `getHeadlessMilkdownParser()` once (works headless; schema includes all
+  proof marks + nodes).
+- `onStoreDocument`: if `doc.getXmlFragment('prosemirror')` is non-empty →
+  `yXmlFragmentToProsemirrorJSON` → strip `proof*` marks from the JSON (content
+  only) → `schema.nodeFromJSON` → `serializeMarkdown` → `embedMarks(md,
+  getMap('marks').toJSON())` → `session.applyContent`. Guard the empty fragment
+  (don't clobber the file).
+- The editor seeds the fragment from open-context `doc.markdown` when empty, so
+  `onLoadDocument` need not seed the fragment.
+Risks to handle: empty/degenerate fragment (serialize throws), marks-vs-inline
+double-encoding (strip proof marks from content, keep the marks map for the
+footer), and pulling `server/milkdown-headless` (@milkdown/* deps) into
+`mddocs-local` without bloating its clean typecheck/footprint. Headless-test by
+writing to the fragment via `prosemirrorToYXmlFragment` (mimics the editor) and
+asserting the file gets the markdown; then a browser re-test.
+
 ### Task 5 — Reconcile live ↔ async(git) merge
 Confirm M1's `resolveFooterConflictText` still resolves a git conflict produced
 when a live session and an offline edit both touched the footer.
