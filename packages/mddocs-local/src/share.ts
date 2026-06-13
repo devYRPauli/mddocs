@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { dirname, join, normalize, resolve } from 'node:path'
 import { WebSocketServer } from 'ws'
 import { configureCollab, type CollabServerOptions } from './collab'
+import { createAgentApi } from './agent'
 import { loadDoc } from './doc'
 
 export interface ShareServeOptions extends CollabServerOptions {
@@ -20,6 +21,8 @@ export interface ShareServeHandle {
   url: string
   /** Tokenized links per role; share the one matching the access you want to grant. */
   links: Record<ShareRole, string>
+  /** Token authorizing the agent HTTP API (sent as x-share-token to /api/agent/*). */
+  agentToken: string
   host: string
   port: number
   slug: string
@@ -55,6 +58,18 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body))
 }
 
+function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  return new Promise((resolveBody, reject) => {
+    let data = ''
+    req.on('data', (c) => { data += c })
+    req.on('end', () => {
+      try { resolveBody(data ? (JSON.parse(data) as Record<string, unknown>) : {}) }
+      catch (err) { reject(err) }
+    })
+    req.on('error', reject)
+  })
+}
+
 // Boot a single-port live-collaboration host: static editor bundle, the minimal
 // no-auth share bootstrap the editor needs to enter collab mode, and the
 // Hocuspocus WebSocket (attached to this server's upgrade). The editor's
@@ -84,6 +99,10 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
     return q ? new URLSearchParams(q).get('token') ?? undefined : undefined
   }
 
+  // A separate token authorizes the agent HTTP API (M3). It is not a WebSocket
+  // role — it gates /api/agent/* programmatic access.
+  const agentToken = randomUUID()
+
   // Server-side write enforcement: a viewer's WebSocket connection is readOnly,
   // so Hocuspocus drops its document updates even if a crafted client tries to
   // write. Commenters/editors keep write access (a comment is itself a write);
@@ -92,6 +111,9 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
     ...opts,
     authenticate: (token) => ({ readOnly: roleForToken(token) === 'viewer' }),
   })
+
+  // M3: agent operations inject into the live doc via a Hocuspocus DirectConnection.
+  const agent = createAgentApi(hocuspocus, slug)
 
   async function serveStatic(urlPath: string, res: ServerResponse): Promise<void> {
     // The bare /d/:slug document route serves the editor shell (SPA). Asset
@@ -149,6 +171,44 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
           return
         }
 
+        // M3 agent HTTP API — authorized by the agent token (x-share-token).
+        if (urlPath.startsWith(`/api/agent/${slug}/`)) {
+          if (tokenFromRequest(req) !== agentToken) {
+            sendJson(res, 403, { error: 'invalid or missing agent token' })
+            return
+          }
+          if (urlPath === `/api/agent/${slug}/state` && req.method === 'GET') {
+            sendJson(res, 200, await agent.getState())
+            return
+          }
+          if (urlPath === `/api/agent/${slug}/comment` && req.method === 'POST') {
+            const b = await readJsonBody(req)
+            if (typeof b.quote !== 'string' || typeof b.text !== 'string') {
+              sendJson(res, 400, { error: 'comment needs { quote, text }' })
+              return
+            }
+            sendJson(res, 200, await agent.addComment({ quote: b.quote, text: b.text, model: b.model as string | undefined }))
+            return
+          }
+          if (urlPath === `/api/agent/${slug}/suggest` && req.method === 'POST') {
+            const b = await readJsonBody(req)
+            if (typeof b.quote !== 'string') {
+              sendJson(res, 400, { error: 'suggest needs { quote, replace|insert|delete }' })
+              return
+            }
+            sendJson(res, 200, await agent.addSuggestion({
+              quote: b.quote,
+              replace: b.replace as string | undefined,
+              insert: b.insert as string | undefined,
+              delete: b.delete as boolean | undefined,
+              model: b.model as string | undefined,
+            }))
+            return
+          }
+          sendJson(res, 404, { error: 'unknown agent endpoint' })
+          return
+        }
+
         await serveStatic(urlPath, res)
       } catch (err) {
         sendJson(res, 500, { error: (err as Error).message })
@@ -179,10 +239,12 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
   return {
     url: links.editor,
     links,
+    agentToken,
     host,
     port: boundPort,
     slug,
     async stop() {
+      await agent.stop()
       await hocuspocus.destroy()
       await session.stop()
       wss.close()
