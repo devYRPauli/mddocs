@@ -96,8 +96,16 @@ reconstruct each full side (before + side + after) → both shapes resolve.
 `serveShare` mints a random token per role; open-context maps `x-share-token`
 (or `?token=`) → role → capabilities (editor=all, commenter=read+comment,
 viewer=read; absent/unknown → viewer). `mddocs serve` prints all three links.
-NOTE: capabilities gate the editor UI; server-side WS write-blocking for
-non-editors is a hardening follow-up.
+
+### Hardening — server-side viewer write enforcement  [DONE 2026-06-12]
+`configureCollab` gained an `authenticate(token)` hook wired to Hocuspocus
+`onAuthenticate`; serveShare maps the viewer token to `readOnly: true`, so
+Hocuspocus drops a viewer connection's document writes even from a crafted
+client. Viewers still read; commenters/editors keep write access (a comment is a
+write — the comment-vs-edit split stays UI-gated via capabilities). Headless
+test proves a viewer's writes never reach disk while an editor's do;
+browser-checked that the edit link still connects (mandatory auth) and the view
+link loads read-only.
 
 ---
 
