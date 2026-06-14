@@ -10,7 +10,7 @@ export type { Session, SessionOptions, ServeOptions, ServeHandle } from './serve
 export { createCollabServer, configureCollab } from './collab'
 export type { CollabServerOptions, CollabServerHandle, ConfiguredCollab } from './collab'
 export { serveShare } from './share'
-export type { ShareServeOptions, ShareServeHandle, ShareRole, ShareCapabilities } from './share'
+export type { ShareServeOptions, ShareServeHandle, ShareRole, ShareCapabilities, AgentConfig, AgentRateLimit } from './share'
 export { createAgentApi } from './agent'
 export type { AgentApi, AgentState, CommentInput, SuggestInput, RewriteInput } from './agent'
 export * from './types'

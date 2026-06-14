@@ -152,6 +152,13 @@ POST /api/agent/:slug/rewrite  { markdown, quote?, model? }              -> { ch
 With a `quote`, `rewrite` replaces that span; without one it replaces the whole
 body. The change is applied to the live document and recorded as an authored mark.
 
+By default `serve` issues one shared agent token. Pass `--agent <name>` (repeatable)
+to register named agents, each with its own token; `serve` then prints a token per
+agent. A request that omits `model` is attributed to the token's agent name
+(`ai:<name>`). Per-agent rate limits are available through the engine API
+(`serveShare({ agents: [{ name, rateLimit: { maxRequests, windowMs } }] })`),
+returning HTTP 429 when exceeded.
+
 ```bash
 # Read the live document:
 curl -H "x-share-token: $TOKEN" http://127.0.0.1:<port>/api/agent/notes.md/state
@@ -181,7 +188,7 @@ git add notes.md && git commit
 
 ```
 mddocs open  <file> [--port <n>] [--no-autocommit]          single-user browser editor (loopback)
-mddocs serve <file> [--port <n>] [--host <ip>] [--no-autocommit]
+mddocs serve <file> [--port <n>] [--host <ip>] [--no-autocommit] [--agent <name>]
                                                             live multiplayer, role links, agent API
 mddocs init                                                 mark the repo as mddocs-managed
 mddocs resolve <file>                                       union a git-conflicted PROOF footer
@@ -274,7 +281,6 @@ browser-interactive path is verified manually.
 
 Contributions welcome. Next on the list:
 
-- Per-agent identity tokens and rate limiting, instead of one shared agent token.
 - Commenter-granularity enforcement: viewers are enforced server-side; enforce the
   comment-vs-edit split on the wire too.
 - Presence and events for agents.

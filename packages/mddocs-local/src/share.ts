@@ -8,9 +8,28 @@ import { configureCollab, type CollabServerOptions } from './collab'
 import { createAgentApi } from './agent'
 import { loadDoc } from './doc'
 
+export interface AgentRateLimit {
+  /** Max requests allowed within the rolling window before HTTP 429. */
+  maxRequests: number
+  /** Window length in milliseconds. */
+  windowMs: number
+}
+
+export interface AgentConfig {
+  /** Identity used for `ai:<name>` provenance when a request omits `model`. */
+  name: string
+  /** Optional per-agent rate limit. When omitted, the agent is unlimited. */
+  rateLimit?: AgentRateLimit
+}
+
 export interface ShareServeOptions extends CollabServerOptions {
   host?: string
   distDir?: string
+  /**
+   * Named agents, each issued its own token. When omitted, a single anonymous
+   * agent token is generated (backward compatible).
+   */
+  agents?: AgentConfig[]
 }
 
 export type ShareRole = 'editor' | 'commenter' | 'viewer'
@@ -23,6 +42,8 @@ export interface ShareServeHandle {
   links: Record<ShareRole, string>
   /** Token authorizing the agent HTTP API (sent as x-share-token to /api/agent/*). */
   agentToken: string
+  /** Per-agent tokens (name -> token) when `opts.agents` was provided. */
+  agentTokens?: Record<string, string>
   host: string
   port: number
   slug: string
@@ -99,9 +120,33 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
     return q ? new URLSearchParams(q).get('token') ?? undefined : undefined
   }
 
-  // A separate token authorizes the agent HTTP API (M3). It is not a WebSocket
-  // role - it gates /api/agent/* programmatic access.
-  const agentToken = randomUUID()
+  // Separate tokens authorize the agent HTTP API (M3). They are not WebSocket
+  // roles - they gate /api/agent/* programmatic access. Each named agent gets
+  // its own token; with no agents configured we issue a single anonymous one so
+  // the simple case (and existing callers) keep working.
+  interface AgentEntry { name: string; token: string; rateLimit?: AgentRateLimit }
+  const agentEntries: AgentEntry[] =
+    opts.agents && opts.agents.length > 0
+      ? opts.agents.map((a) => ({ name: a.name, token: randomUUID(), rateLimit: a.rateLimit }))
+      : [{ name: 'agent', token: randomUUID() }]
+  const agentToken = agentEntries[0].token
+  const agentByToken = new Map<string, AgentEntry>(agentEntries.map((e) => [e.token, e]))
+
+  // In-memory rolling-window rate limiter, keyed by token. Discarded on stop().
+  const rateHits = new Map<string, number[]>()
+  function withinRateLimit(entry: AgentEntry): boolean {
+    if (!entry.rateLimit) return true
+    const { maxRequests, windowMs } = entry.rateLimit
+    const now = Date.now()
+    const recent = (rateHits.get(entry.token) ?? []).filter((t) => now - t < windowMs)
+    if (recent.length >= maxRequests) {
+      rateHits.set(entry.token, recent)
+      return false
+    }
+    recent.push(now)
+    rateHits.set(entry.token, recent)
+    return true
+  }
 
   // Server-side write enforcement: a viewer's WebSocket connection is readOnly,
   // so Hocuspocus drops its document updates even if a crafted client tries to
@@ -171,12 +216,20 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
           return
         }
 
-        // M3 agent HTTP API - authorized by the agent token (x-share-token).
+        // M3 agent HTTP API - authorized by a per-agent token (x-share-token).
+        // The matched agent's name is the default `ai:<model>` identity when a
+        // request omits `model`.
         if (urlPath.startsWith(`/api/agent/${slug}/`)) {
-          if (tokenFromRequest(req) !== agentToken) {
+          const entry = agentByToken.get(tokenFromRequest(req) ?? '')
+          if (!entry) {
             sendJson(res, 403, { error: 'invalid or missing agent token' })
             return
           }
+          if (!withinRateLimit(entry)) {
+            sendJson(res, 429, { error: 'rate limit exceeded', agent: entry.name })
+            return
+          }
+          const modelFrom = (b: Record<string, unknown>) => (b.model as string | undefined) ?? entry.name
           if (urlPath === `/api/agent/${slug}/state` && req.method === 'GET') {
             sendJson(res, 200, await agent.getState())
             return
@@ -187,7 +240,7 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
               sendJson(res, 400, { error: 'comment needs { quote, text }' })
               return
             }
-            sendJson(res, 200, await agent.addComment({ quote: b.quote, text: b.text, model: b.model as string | undefined }))
+            sendJson(res, 200, await agent.addComment({ quote: b.quote, text: b.text, model: modelFrom(b) }))
             return
           }
           if (urlPath === `/api/agent/${slug}/suggest` && req.method === 'POST') {
@@ -201,7 +254,7 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
               replace: b.replace as string | undefined,
               insert: b.insert as string | undefined,
               delete: b.delete as boolean | undefined,
-              model: b.model as string | undefined,
+              model: modelFrom(b),
             }))
             return
           }
@@ -214,7 +267,7 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
             sendJson(res, 200, await agent.rewrite({
               markdown: b.markdown,
               quote: typeof b.quote === 'string' ? b.quote : undefined,
-              model: b.model as string | undefined,
+              model: modelFrom(b),
             }))
             return
           }
@@ -253,6 +306,9 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
     url: links.editor,
     links,
     agentToken,
+    agentTokens: opts.agents
+      ? Object.fromEntries(agentEntries.map((e) => [e.name, e.token]))
+      : undefined,
     host,
     port: boundPort,
     slug,
