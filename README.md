@@ -186,7 +186,7 @@ mddocs comment reply <id> --text <t> [--file <f>]          reply in a comment th
 mddocs comment resolve <id> [--file <f>]                   resolve a comment thread
 
 mddocs suggest <file> --quote <q> (--replace <c> | --insert <c> | --delete)
-mddocs accept  <id> [--file <f>]                            mark a suggestion accepted
+mddocs accept  <id> [--file <f>]                            apply a suggestion to the prose
 mddocs reject  <id> [--file <f>]                            mark a suggestion rejected
 
 mddocs log  <file>                                          commit history for a document
@@ -195,9 +195,10 @@ mddocs diff <file> [rev]                                    changes vs working t
 
 Notes. Id-only commands (`reply`, `resolve`, `accept`, `reject`) find their
 document automatically by scanning the managed `.md` files for the mark; pass
-`--file <path>` to skip the scan or disambiguate. `accept` and `reject` record
-the decision on the mark (`status`); the prose rewrite for an accepted suggestion
-is applied in the editor.
+`--file <path>` to skip the scan or disambiguate. `accept` applies the suggested
+change to the prose (replace, insert, or delete, anchored by the suggestion's
+quote) and consumes the suggestion; `reject` records the decision on the mark and
+leaves the prose unchanged.
 
 ## Architecture
 
@@ -272,8 +273,6 @@ Contributions welcome. Next on the list:
 - Per-agent identity tokens and rate limiting, instead of one shared agent token.
 - Commenter-granularity enforcement: viewers are enforced server-side; enforce the
   comment-vs-edit split on the wire too.
-- CLI `accept` applies the prose rewrite (today it records the decision; applying
-  the edit to the body is editor-only).
 - Presence and events for agents.
 - Publish as an installable `mddocs` binary on npm, with a real project name.
 - CI to run both test suites on every push.

@@ -1,26 +1,38 @@
 import type { Command } from 'commander'
-import { loadDoc, saveDoc, proof } from 'mddocs-local'
+import { loadDoc, saveDoc, proof, applySuggestion } from 'mddocs-local'
 import type { Mark } from 'mddocs-local'
 import { fileForId } from '../util/resolve-file'
 import { toArray, toRecord } from '../util/marks'
 
-// accept/reject share the same shape: resolve --file, apply a @proof/core
-// status transition (accepted|rejected) to the suggestion, persist.
-// M1 records the decision; applying the edit to prose is the editor's job.
-function decide(
-  apply: (marks: Mark[], id: string) => Mark[],
-  verb: string,
-) {
-  return async (id: string, o: { file?: string }) => {
-    const file = await fileForId(id, o)
-    const doc = await loadDoc(file)
-    const next = apply(toArray(doc.marks), id)
-    await saveDoc(file, doc.content, toRecord(next))
-    console.log(`${verb} ${id}`)
-  }
-}
+const SUGGESTION_KINDS = ['insert', 'delete', 'replace']
 
 export function registerAcceptReject(program: Command): void {
-  program.command('accept <id>').option('--file <f>').action(decide(proof.acceptSuggestion, 'accepted'))
-  program.command('reject <id>').option('--file <f>').action(decide(proof.rejectSuggestion, 'rejected'))
+  // accept applies the suggested prose change to the body and consumes the
+  // suggestion mark (it is now part of the text).
+  program.command('accept <id>')
+    .option('--file <f>')
+    .action(async (id: string, o: { file?: string }) => {
+      const file = await fileForId(id, o)
+      const doc = await loadDoc(file)
+      const stored = doc.marks[id]
+      const mark = stored && ({ ...stored, id } as unknown as Mark)
+      if (!mark || !SUGGESTION_KINDS.includes(mark.kind)) {
+        throw new Error(`no suggestion with id ${id} in ${file}`)
+      }
+      const content = applySuggestion(doc.content, mark)
+      const { [id]: _applied, ...rest } = doc.marks
+      await saveDoc(file, content, rest)
+      console.log(`accepted ${id} (applied to ${file})`)
+    })
+
+  // reject records the decision on the mark; the prose is left unchanged.
+  program.command('reject <id>')
+    .option('--file <f>')
+    .action(async (id: string, o: { file?: string }) => {
+      const file = await fileForId(id, o)
+      const doc = await loadDoc(file)
+      const next = proof.rejectSuggestion(toArray(doc.marks), id)
+      await saveDoc(file, doc.content, toRecord(next))
+      console.log(`rejected ${id}`)
+    })
 }

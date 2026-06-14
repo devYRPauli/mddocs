@@ -1,5 +1,6 @@
 export { loadDoc, saveDoc } from './doc'
 export { reanchorMarks } from './reanchor'
+export { applySuggestion } from './apply'
 export { hasFooterConflict, resolveFooterConflictText } from './footer'
 export { history, diff, commitFile, isGitRepo } from './git'
 export { buildMarkIndex, findFileForMark, listManagedDocs } from './markindex'
