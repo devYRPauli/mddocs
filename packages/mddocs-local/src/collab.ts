@@ -1,4 +1,5 @@
 import { Hocuspocus } from '@hocuspocus/server'
+import * as Y from 'yjs'
 import { basename } from 'node:path'
 import { loadDoc } from './doc'
 import { createSession, type Session, type SessionOptions } from './serve'
@@ -15,10 +16,12 @@ export interface CollabServerOptions extends SessionOptions {
   /**
    * Optional per-connection authentication. Maps the WebSocket token to its
    * access; `readOnly: true` makes Hocuspocus drop all document writes from that
-   * connection (server-side enforcement). Return null to reject the connection.
-   * When omitted, connections are unauthenticated and read-write.
+   * connection (server-side enforcement). `role` is recorded on the connection so
+   * finer-grained enforcement (e.g. commenters cannot edit prose) can key off it.
+   * Return null to reject the connection. When omitted, connections are
+   * unauthenticated and read-write.
    */
-  authenticate?: (token: string) => { readOnly: boolean } | null
+  authenticate?: (token: string) => { readOnly: boolean; role?: string } | null
 }
 
 export interface CollabServerHandle {
@@ -50,6 +53,37 @@ export async function configureCollab(
   const slug = opts.slug ?? basename(file)
   const session = await createSession(file, opts)
 
+  // Commenter-granularity wire enforcement. Viewers are blocked wholesale via
+  // readOnly; commenters may write marks (a comment is a write to the marks map)
+  // but must not edit prose (the `prosemirror` fragment). We attach a Y.UndoManager
+  // scoped to that fragment whose trackedOrigins only matches connections whose
+  // role is `commenter` (the role rides on the Yjs transaction origin, which is the
+  // Hocuspocus connection, via its context). Any prose change from a commenter is
+  // captured and immediately undone, so it never persists or reaches other clients.
+  // Editor changes (different role) are never captured; mark writes never touch the
+  // fragment, so they are untouched.
+  const enforced = new WeakSet<object>()
+  function enforceCommenterProse(doc: Y.Doc): void {
+    if (enforced.has(doc)) return
+    enforced.add(doc)
+    const trackedOrigins = {
+      has: (o: unknown): boolean =>
+        !!o && typeof o === 'object' && (o as { context?: { role?: string } }).context?.role === 'commenter',
+      add: () => undefined,
+      delete: () => undefined,
+    }
+    const undo = new Y.UndoManager(doc.getXmlFragment('prosemirror'), {
+      trackedOrigins: trackedOrigins as unknown as Set<unknown>,
+      captureTimeout: 0,
+    })
+    undo.on('stack-item-added', () => {
+      // Defer past the current Yjs transaction; undo() starts its own.
+      queueMicrotask(() => {
+        if (undo.undoStack.length > 0) undo.undo()
+      })
+    })
+  }
+
   const hocuspocus = new Hocuspocus().configure({
     port: opts.port ?? 0,
     debounce: opts.storeDebounceMs ?? 150,
@@ -71,6 +105,8 @@ export async function configureCollab(
       for (const [id, mark] of Object.entries(marks)) {
         if (!ymarks.has(id)) ymarks.set(id, mark as unknown as Record<string, unknown>)
       }
+      // Wire prose enforcement once the doc exists (only meaningful with roles).
+      if (opts.authenticate) enforceCommenterProse(data.document)
       return data.document
     },
 
@@ -98,7 +134,9 @@ export async function configureCollab(
             const verdict = opts.authenticate!(data.token)
             if (!verdict) throw new Error('Unauthorized')
             data.connection.readOnly = verdict.readOnly
-            return { readOnly: verdict.readOnly }
+            // The returned object is merged into the connection's context, so the
+            // role travels with every transaction this connection originates.
+            return { readOnly: verdict.readOnly, role: verdict.role }
           },
         }
       : {}),

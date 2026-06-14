@@ -154,7 +154,10 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
   // the comment-vs-edit split is gated in the editor UI via capabilities.
   const { hocuspocus, session, slug } = await configureCollab(file, {
     ...opts,
-    authenticate: (token) => ({ readOnly: roleForToken(token) === 'viewer' }),
+    authenticate: (token) => {
+      const role = roleForToken(token)
+      return { readOnly: role === 'viewer', role }
+    },
   })
 
   // M3: agent operations inject into the live doc via a Hocuspocus DirectConnection.

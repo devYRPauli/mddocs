@@ -49,7 +49,7 @@ server. `mddocs` takes a different approach:
 |---|---|
 | Browser editor (comments, suggestions, provenance) | `mddocs open <file>` (single-user) or `mddocs serve <file>` (multiplayer) |
 | Real-time multiplayer with presence | `mddocs serve <file>`: everyone on the URL co-edits live; edits persist to the file plus git |
-| Role-based share links (editor / commenter / viewer) | `serve` prints a link per role; viewers are read-only, enforced server-side |
+| Role-based share links (editor / commenter / viewer) | `serve` prints a link per role; roles enforced server-side (viewers read-only, commenters cannot edit prose) |
 | Agent HTTP API | AI tools read state, post comments/suggestions, or rewrite prose live, attributed to `ai:<model>` |
 | Comments and suggestions from the terminal | `mddocs comment ...`, `mddocs suggest ...`, `mddocs accept`/`reject` |
 | History and diff | `mddocs log <file>`, `mddocs diff <file> [rev]` (plain git underneath) |
@@ -129,9 +129,11 @@ grant:
 
 - An absent or unknown token gets the least privilege (viewer), so a leaked bare
   URL cannot edit.
-- Viewers are enforced server-side: a viewer's WebSocket connection is read-only,
-  so a crafted client still cannot write. The commenter-vs-editor split is gated
-  in the editor UI (a comment is itself a write).
+- Roles are enforced server-side, not just in the editor UI. A viewer's WebSocket
+  connection is read-only, so a crafted client cannot write at all. A commenter
+  may write comments (a comment is a write to the marks map) but cannot edit the
+  prose: any prose change from a commenter connection is reverted server-side
+  before it persists or reaches other clients. Editors can do both.
 
 ## Agent HTTP API
 
@@ -274,18 +276,17 @@ browser-interactive path is verified manually.
 
 - M1: local-first editor and CLI (comments, suggestions, provenance, git history). Done.
 - M2: live collaboration server (real-time multiplayer, file plus git canonical). Done.
-- M2.5: share links and roles (editor/commenter/viewer, server-side viewer enforcement). Done.
-- M3: agent HTTP API (read state, post comments/suggestions live). Done.
+- M2.5: share links and roles (editor/commenter/viewer, server-side role
+  enforcement: viewers read-only, commenters cannot edit prose). Done.
+- M3: agent HTTP API (read state, comment, suggest, and rewrite prose live). Done.
 
 ## Upcoming updates
 
 Contributions welcome. Next on the list:
 
-- Commenter-granularity enforcement: viewers are enforced server-side; enforce the
-  comment-vs-edit split on the wire too.
 - Presence and events for agents.
-- Publish as an installable `mddocs` binary on npm, with a real project name.
-- CI to run both test suites on every push.
+- Publish under a real, unscoped npm project name (currently the `@devyrpauli`
+  scope while the name is settled).
 - Upstream the `@proof/core` TS2308 fix
   ([proof-sdk#57](https://github.com/EveryInc/proof-sdk/pull/57)) and drop the
   local fork patch once merged.
