@@ -50,7 +50,7 @@ server. `mddocs` takes a different approach:
 | Browser editor (comments, suggestions, provenance) | `mddocs open <file>` (single-user) or `mddocs serve <file>` (multiplayer) |
 | Real-time multiplayer with presence | `mddocs serve <file>`: everyone on the URL co-edits live; edits persist to the file plus git |
 | Role-based share links (editor / commenter / viewer) | `serve` prints a link per role; viewers are read-only, enforced server-side |
-| Agent HTTP API | AI tools read state and post comments/suggestions live, attributed to `ai:<model>` |
+| Agent HTTP API | AI tools read state, post comments/suggestions, or rewrite prose live, attributed to `ai:<model>` |
 | Comments and suggestions from the terminal | `mddocs comment ...`, `mddocs suggest ...`, `mddocs accept`/`reject` |
 | History and diff | `mddocs log <file>`, `mddocs diff <file> [rev]` (plain git underneath) |
 | Async multiplayer and conflict resolution | edit on branches; `mddocs resolve <file>` unions a conflicted PROOF footer |
@@ -136,15 +136,21 @@ grant:
 ## Agent HTTP API
 
 A live `serve` session also exposes an HTTP API so AI agents can read the
-document and post comments/suggestions. They appear in every connected editor in
-real time and persist to git, attributed to `ai:<model>`. `serve` prints the base
-URL and an agent token; send it as the `x-share-token` header.
+document, post comments/suggestions, and edit the prose directly. Everything
+appears in every connected editor in real time and persists to git, attributed to
+`ai:<model>`. `serve` prints the base URL and an agent token; send it as the
+`x-share-token` header.
 
 ```
 GET  /api/agent/:slug/state                                              -> { content, marks }
 POST /api/agent/:slug/comment  { quote, text, model? }                   -> { id }
 POST /api/agent/:slug/suggest  { quote, replace|insert|delete, model? }  -> { id, kind }
+POST /api/agent/:slug/rewrite  { markdown, quote?, model? }              -> { chars, by, markId? }
 ```
+
+`suggest` proposes a change a human accepts; `rewrite` edits the prose directly.
+With a `quote`, `rewrite` replaces that span; without one it replaces the whole
+body. The change is applied to the live document and recorded as an authored mark.
 
 ```bash
 # Read the live document:
@@ -268,8 +274,6 @@ browser-interactive path is verified manually.
 
 Contributions welcome. Next on the list:
 
-- Agent direct-rewrite endpoint: let agents edit prose directly, not just propose
-  (v1 is propose-only; humans accept).
 - Per-agent identity tokens and rate limiting, instead of one shared agent token.
 - Commenter-granularity enforcement: viewers are enforced server-side; enforce the
   comment-vs-edit split on the wire too.

@@ -205,6 +205,19 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
             }))
             return
           }
+          if (urlPath === `/api/agent/${slug}/rewrite` && req.method === 'POST') {
+            const b = await readJsonBody(req)
+            if (typeof b.markdown !== 'string') {
+              sendJson(res, 400, { error: 'rewrite needs { markdown, quote? }' })
+              return
+            }
+            sendJson(res, 200, await agent.rewrite({
+              markdown: b.markdown,
+              quote: typeof b.quote === 'string' ? b.quote : undefined,
+              model: b.model as string | undefined,
+            }))
+            return
+          }
           sendJson(res, 404, { error: 'unknown agent endpoint' })
           return
         }

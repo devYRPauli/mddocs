@@ -1,10 +1,13 @@
 import type { Hocuspocus } from '@hocuspocus/server'
-import { fragmentToMarkdown } from './serialize'
+import { fragmentToMarkdown, parseMarkdownNode, setFragmentFromNode } from './serialize'
 import {
   createComment,
   createReplaceSuggestion,
   createInsertSuggestion,
   createDeleteSuggestion,
+  createAuthored,
+  resolveQuote,
+  normalizeQuote,
 } from './proof'
 import type { Mark, StoredMark } from './proof'
 
@@ -27,10 +30,19 @@ export interface SuggestInput {
   model?: string
 }
 
+export interface RewriteInput {
+  /** Quoted span to replace. Omit (or empty) to replace the whole document body. */
+  quote?: string
+  /** New markdown for the span (or the whole body). */
+  markdown: string
+  model?: string
+}
+
 export interface AgentApi {
   getState(): Promise<AgentState>
   addComment(input: CommentInput): Promise<{ id: string }>
   addSuggestion(input: SuggestInput): Promise<{ id: string; kind: string }>
+  rewrite(input: RewriteInput): Promise<{ chars: number; by: string; markId?: string }>
   stop(): Promise<void>
 }
 
@@ -78,6 +90,42 @@ export function createAgentApi(hocuspocus: Hocuspocus, slug: string, opts: { mod
       else throw new Error('suggest needs one of replace, insert, or delete')
       await inject(mark)
       return { id: mark.id, kind: mark.kind }
+    },
+
+    // Edit the prose directly (not a proposal): replace a quoted span, or the
+    // whole body when no quote is given. The new markdown is applied to the live
+    // `prosemirror` fragment so it syncs to every editor and persists to the file
+    // (+ git) via onStoreDocument. Authorship is recorded as an `ai:<model>`
+    // authored mark over the new text.
+    async rewrite({ quote, markdown, model }) {
+      const conn = await connect()
+      const doc = conn.document
+      if (!doc) throw new Error('no live document to rewrite')
+      const current = (await fragmentToMarkdown(doc.getXmlFragment('prosemirror'))) ?? ''
+      let next: string
+      if (quote && quote.length > 0) {
+        const span = resolveQuote(current, quote)
+        if (!span) throw new Error('quoted text not found in the live document')
+        next = current.slice(0, span.from) + markdown + current.slice(span.to)
+      } else {
+        next = markdown
+      }
+      const node = await parseMarkdownNode(next)
+      await conn.transact((d) => {
+        setFragmentFromNode(d.getXmlFragment('prosemirror'), node)
+      })
+
+      const by = actor(model)
+      // Provenance: an authored mark over the new text. The range is recomputed
+      // from the (length-capped) quote when the doc is persisted and reanchored.
+      const snippet = normalizeQuote(markdown).slice(0, 200)
+      let markId: string | undefined
+      if (snippet.length > 0) {
+        const mark = createAuthored(by, { from: 0, to: 0 }, snippet)
+        await inject(mark)
+        markId = mark.id
+      }
+      return { chars: next.length, by, markId }
     },
 
     async stop() {

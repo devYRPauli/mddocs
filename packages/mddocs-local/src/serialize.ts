@@ -70,3 +70,19 @@ export async function seedFragmentFromMarkdown(markdown: string, fragment: XmlFr
   const node = parser.parseMarkdown(markdown) as ProsemirrorNode
   prosemirrorToYXmlFragment(node, fragment)
 }
+
+// Parse markdown into a ProseMirror node (async). Pair with setFragmentFromNode
+// to update a live fragment inside a Y transaction, where async work is not
+// allowed: parse first, then apply the node synchronously.
+export async function parseMarkdownNode(markdown: string): Promise<ProsemirrorNode> {
+  const parser = await getParser()
+  return parser.parseMarkdown(markdown) as ProsemirrorNode
+}
+
+// Replace a fragment's entire content with a pre-parsed node (synchronous). Clears
+// first so the "seed an empty fragment" precondition for prosemirrorToYXmlFragment
+// holds; safe to call inside a Y transaction.
+export function setFragmentFromNode(fragment: XmlFragment, node: ProsemirrorNode): void {
+  fragment.delete(0, fragment.length)
+  prosemirrorToYXmlFragment(node, fragment)
+}
