@@ -39,7 +39,7 @@ export function registerComment(program: Command): void {
     .requiredOption('--text <t>')
     .option('--file <f>')
     .action(async (id: string, o: { text: string; file?: string }) => {
-      const file = fileForId(o)
+      const file = await fileForId(id, o)
       const doc = await loadDoc(file)
       const mark = doc.marks[id] as unknown as
         | { kind?: string; data?: { replies?: Array<{ by: string; at: string; text: string }> } }
@@ -57,7 +57,7 @@ export function registerComment(program: Command): void {
   cmd.command('resolve <id>')
     .option('--file <f>')
     .action(async (id: string, o: { file?: string }) => {
-      const file = fileForId(o)
+      const file = await fileForId(id, o)
       const doc = await loadDoc(file)
       const next = proof.resolveComment(toArray(doc.marks), id)
       await saveDoc(file, doc.content, toRecord(next))

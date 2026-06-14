@@ -12,7 +12,7 @@ function decide(
   verb: string,
 ) {
   return async (id: string, o: { file?: string }) => {
-    const file = fileForId(o)
+    const file = await fileForId(id, o)
     const doc = await loadDoc(file)
     const next = apply(toArray(doc.marks), id)
     await saveDoc(file, doc.content, toRecord(next))

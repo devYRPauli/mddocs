@@ -182,21 +182,22 @@ mddocs resolve <file>                                       union a git-conflict
 
 mddocs comment add  <file> --quote <q> --text <t>           add a comment anchored to <q>
 mddocs comment ls   <file> [--open|--resolved|--orphaned]
-mddocs comment reply <id> --text <t> --file <f>             reply in a comment thread
-mddocs comment resolve <id> --file <f>                      resolve a comment thread
+mddocs comment reply <id> --text <t> [--file <f>]          reply in a comment thread
+mddocs comment resolve <id> [--file <f>]                   resolve a comment thread
 
 mddocs suggest <file> --quote <q> (--replace <c> | --insert <c> | --delete)
-mddocs accept  <id> --file <f>                              mark a suggestion accepted
-mddocs reject  <id> --file <f>                              mark a suggestion rejected
+mddocs accept  <id> [--file <f>]                            mark a suggestion accepted
+mddocs reject  <id> [--file <f>]                            mark a suggestion rejected
 
 mddocs log  <file>                                          commit history for a document
 mddocs diff <file> [rev]                                    changes vs working tree or a revision
 ```
 
-Notes. Id-only commands (`reply`, `resolve`, `accept`, `reject`) take an explicit
-`--file`; a global mark-to-file index is a later milestone. `accept` and `reject`
-record the decision on the mark (`status`); the prose rewrite for an accepted
-suggestion is applied in the editor.
+Notes. Id-only commands (`reply`, `resolve`, `accept`, `reject`) find their
+document automatically by scanning the managed `.md` files for the mark; pass
+`--file <path>` to skip the scan or disambiguate. `accept` and `reject` record
+the decision on the mark (`status`); the prose rewrite for an accepted suggestion
+is applied in the editor.
 
 ## Architecture
 
@@ -273,7 +274,6 @@ Contributions welcome. Next on the list:
   comment-vs-edit split on the wire too.
 - CLI `accept` applies the prose rewrite (today it records the decision; applying
   the edit to the body is editor-only).
-- Global mark-to-file index, so id-only commands no longer need an explicit `--file`.
 - Presence and events for agents.
 - Publish as an installable `mddocs` binary on npm, with a real project name.
 - CI to run both test suites on every push.
