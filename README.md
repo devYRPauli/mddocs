@@ -146,11 +146,14 @@ appears in every connected editor in real time and persists to git, attributed t
 ```
 GET  /api/agent/:slug/state                                              -> { content, marks }
 POST /api/agent/:slug/comment  { quote, text, model? }                   -> { id }
+POST /api/agent/:slug/reply    { id, text, model? }                      -> { id, replies }
 POST /api/agent/:slug/suggest  { quote, replace|insert|delete, model? }  -> { id, kind }
 POST /api/agent/:slug/rewrite  { markdown, quote?, model? }              -> { chars, by, markId? }
 ```
 
-`suggest` proposes a change a human accepts; `rewrite` edits the prose directly.
+`reply` appends to an existing comment thread (the same threads the CLI's
+`comment reply` writes to); `id` is the comment mark id from `state` or a prior
+`comment` call. `suggest` proposes a change a human accepts; `rewrite` edits the prose directly.
 With a `quote`, `rewrite` replaces that span; without one it replaces the whole
 body. The change is applied to the live document and recorded as an authored mark.
 

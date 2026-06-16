@@ -246,6 +246,21 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
             sendJson(res, 200, await agent.addComment({ quote: b.quote, text: b.text, model: modelFrom(b) }))
             return
           }
+          if (urlPath === `/api/agent/${slug}/reply` && req.method === 'POST') {
+            const b = await readJsonBody(req)
+            if (typeof b.id !== 'string' || typeof b.text !== 'string') {
+              sendJson(res, 400, { error: 'reply needs { id, text }' })
+              return
+            }
+            try {
+              sendJson(res, 200, await agent.reply({ id: b.id, text: b.text, model: modelFrom(b) }))
+            } catch (e) {
+              const err = e as Error & { code?: string }
+              if (err.code === 'NOT_FOUND') sendJson(res, 404, { error: err.message })
+              else throw err
+            }
+            return
+          }
           if (urlPath === `/api/agent/${slug}/suggest` && req.method === 'POST') {
             const b = await readJsonBody(req)
             if (typeof b.quote !== 'string') {

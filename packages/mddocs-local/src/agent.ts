@@ -38,9 +38,23 @@ export interface RewriteInput {
   model?: string
 }
 
+export interface ReplyInput {
+  /** Id of the comment mark to reply to. */
+  id: string
+  text: string
+  model?: string
+}
+
+interface CommentReply {
+  by: string
+  at: string
+  text: string
+}
+
 export interface AgentApi {
   getState(): Promise<AgentState>
   addComment(input: CommentInput): Promise<{ id: string }>
+  reply(input: ReplyInput): Promise<{ id: string; replies: number }>
   addSuggestion(input: SuggestInput): Promise<{ id: string; kind: string }>
   rewrite(input: RewriteInput): Promise<{ chars: number; by: string; markId?: string }>
   stop(): Promise<void>
@@ -80,6 +94,33 @@ export function createAgentApi(hocuspocus: Hocuspocus, slug: string, opts: { mod
       const mark = createComment(quote, actor(model), text, undefined, undefined)
       await inject(mark)
       return { id: mark.id }
+    },
+
+    // Append a reply to an existing comment thread on the LIVE doc. Mirrors the
+    // human CLI `comment reply`: the reply is pushed onto the target comment's
+    // data.replies[] so every connected editor sees it and it persists with the
+    // mark. Throws a NOT_FOUND-coded error when the id is absent or not a comment.
+    async reply({ id, text, model }) {
+      const conn = await connect()
+      const doc = conn.document
+      if (!doc) throw new Error('no live document to reply to')
+      const marks = doc.getMap('marks')
+      const existing = marks.get(id) as ({ kind?: string } & Record<string, unknown>) | undefined
+      if (!existing || existing.kind !== 'comment') {
+        const err = new Error(`no comment with id ${id}`) as Error & { code?: string }
+        err.code = 'NOT_FOUND'
+        throw err
+      }
+      const entry: CommentReply = { by: actor(model), at: new Date().toISOString(), text }
+      let count = 0
+      await conn.transact(() => {
+        const cur = marks.get(id) as ({ data?: { replies?: CommentReply[] } } & Record<string, unknown>)
+        const data = (cur.data ?? {}) as { replies?: CommentReply[] } & Record<string, unknown>
+        const replies = [...(data.replies ?? []), entry]
+        count = replies.length
+        marks.set(id, { ...cur, data: { ...data, replies } })
+      })
+      return { id, replies: count }
     },
 
     async addSuggestion({ quote, replace, insert, delete: del, model }) {
