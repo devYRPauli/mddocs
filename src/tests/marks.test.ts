@@ -665,6 +665,96 @@ test('applyRemoteMarks ignores mismatched relative anchors and falls back to quo
   assertEqual(anchoredText, 'beta', 'Quote fallback should anchor to the quoted text');
 });
 
+test('applyRemoteMarks surfaces a comment stored in the nested data shape (agent/@proof-core)', () => {
+  const markId = 'm-nested-comment';
+  const doc = marksSchema.node('doc', null, [
+    marksSchema.node('paragraph', null, marksSchema.text('alpha beta gamma')),
+  ]);
+
+  const marksStatePlugin = new Plugin({
+    key: marksPluginKey,
+    state: {
+      init: () => ({ metadata: {}, activeMarkId: null }),
+      apply: (tr, value) => {
+        const meta = tr.getMeta(marksPluginKey);
+        if (meta?.type === 'SET_METADATA') {
+          return { ...value, metadata: meta.metadata };
+        }
+        if (meta?.type === 'SET_ACTIVE') {
+          return { ...value, activeMarkId: meta.markId ?? null };
+        }
+        return value;
+      },
+    },
+  });
+
+  let state = EditorState.create({
+    schema: marksSchema,
+    doc,
+    plugins: [marksStatePlugin],
+  });
+
+  // The agent HTTP API / @proof-core createComment store comment fields nested
+  // under `data`, unlike the editor's own top-level shape. The editor must still
+  // surface (and therefore render) these.
+  const remoteMetadata = {
+    [markId]: {
+      kind: 'comment' as const,
+      by: 'ai:claude-opus-4-8',
+      at: '2026-06-16T00:00:00.000Z',
+      quote: 'beta',
+      data: {
+        text: 'Root comment from agent',
+        thread: 't-nested',
+        resolved: false,
+        replies: [
+          { by: 'ai:claude-opus-4-8', text: 'First reply from agent', at: '2026-06-16T00:00:01.000Z' },
+        ],
+      },
+    },
+  };
+
+  const view = {
+    get state() {
+      return state;
+    },
+    dispatch(tr: any) {
+      state = state.apply(tr);
+    },
+  } as any;
+
+  applyRemoteMarks(view, remoteMetadata as any);
+
+  const comment = getMarks(state).find((mark) => mark.id === markId);
+  assert(comment !== undefined, 'nested-shape comment should be surfaced (not dropped)');
+  const data = comment!.data as CommentData;
+  assertEqual(data.text, 'Root comment from agent', 'comment body should come from data.text');
+  assertEqual(data.replies.length, 1, 'reply from data.replies should be present');
+  assertEqual(data.replies[0]?.text, 'First reply from agent', 'reply text should be preserved');
+
+  // A later nested update (an agent appends another reply) must still be lifted
+  // even though a STALE top-level `replies` is also present - which is exactly
+  // what the live editor flushes back onto the shared mark after the first pass.
+  const remoteUpdate = {
+    [markId]: {
+      ...remoteMetadata[markId],
+      replies: [] as CommentReply[], // stale top-level array, mimics the editor flush
+      data: {
+        ...remoteMetadata[markId].data,
+        replies: [
+          ...remoteMetadata[markId].data.replies,
+          { by: 'ai:claude-opus-4-8', text: 'Second reply from agent', at: '2026-06-16T00:00:02.000Z' },
+        ],
+      },
+    },
+  };
+  applyRemoteMarks(view, remoteUpdate as any);
+  const updated = getMarks(state).find((mark) => mark.id === markId);
+  const updatedData = updated!.data as CommentData;
+  assertEqual(updatedData.replies.length, 2, 'newer/longer data.replies should win over stale top-level replies');
+  assertEqual(updatedData.replies[1]?.text, 'Second reply from agent', 'appended reply should surface');
+});
+
 test('applyRemoteMarks reanchors authored marks from relative anchors when quote is missing', () => {
   const markId = 'authored:human:michael:stale-range';
   const authoredSchema = new Schema({

@@ -1662,12 +1662,64 @@ export function setMarkMetadata(view: EditorView, metadata: Record<string, Store
 /** Apply marks from a remote client (share sync).
  *  Optionally creates ProseMirror anchors for marks that don't already exist in the document,
  *  using the `quote` field to resolve text ranges. Then merges all metadata. */
+// Comments authored via @proof/core (the agent HTTP API, the CLI, or a persisted
+// PROOF footer) nest their fields under `data` (data.text/thread/resolved/replies),
+// whereas the editor's own metadata keeps them top-level. Lift the nested shape onto
+// the top-level fields the mark pipeline reads (buildAnchorMarks/buildCommentData), so
+// remote and loaded comments render instead of being dropped as "empty bodied". The
+// nested `data` object is left intact so the @proof/core read path (CLI/agent replies)
+// keeps working off the same stored mark.
+function liftNestedCommentData(
+  metadata: Record<string, StoredMark>
+): Record<string, StoredMark> {
+  let changed = false;
+  const out: Record<string, StoredMark> = {};
+  for (const [id, stored] of Object.entries(metadata)) {
+    const data = (stored as { data?: unknown } | undefined)?.data;
+    if (stored?.kind === 'comment' && data && typeof data === 'object' && !Array.isArray(data)) {
+      const d = data as { text?: unknown; thread?: unknown; resolved?: unknown; replies?: unknown };
+      const next: StoredMark = { ...stored };
+      let touched = false;
+      if ((typeof next.text !== 'string' || next.text.trim().length === 0) && typeof d.text === 'string') {
+        next.text = d.text;
+        touched = true;
+      }
+      if (!next.threadId && typeof d.thread === 'string') {
+        next.threadId = d.thread;
+        touched = true;
+      }
+      // Prefer whichever replies list is longer: a later nested update (e.g. the
+      // agent appending a reply) must win over a stale top-level `replies` array
+      // the editor may have flushed back onto the shared mark.
+      if (Array.isArray(d.replies)) {
+        const dReplies = d.replies as CommentReply[];
+        const curReplies = Array.isArray(next.replies) ? next.replies : [];
+        if (dReplies.length > curReplies.length) {
+          next.replies = dReplies;
+          touched = true;
+        }
+      }
+      if (next.resolved === undefined && typeof d.resolved === 'boolean') {
+        next.resolved = d.resolved;
+        touched = true;
+      }
+      if (touched) {
+        out[id] = next;
+        changed = true;
+        continue;
+      }
+    }
+    out[id] = stored;
+  }
+  return changed ? out : metadata;
+}
+
 export function applyRemoteMarks(
   view: EditorView,
   metadata: Record<string, StoredMark>,
   options?: { hydrateAnchors?: boolean }
 ): void {
-  const canonicalMetadata = canonicalizeStoredMarks(metadata);
+  const canonicalMetadata = liftNestedCommentData(canonicalizeStoredMarks(metadata));
   const hydrateAnchors = options?.hydrateAnchors !== false;
   const existingIds = getProofAnchorIds(view.state.doc);
   let tr = view.state.tr;
