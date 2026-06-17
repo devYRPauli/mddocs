@@ -44,10 +44,14 @@ function run(): void {
     'Expected markAcceptAll to persist each accepted suggestion through share mutations',
   );
 
+  // This fork routes acceptSuggestion through the shared performMarkMutationWithRetry
+  // helper (path: 'accept' -> /agent/:slug/marks/${args.path}) instead of inlining the
+  // accept URL, so assert that equivalent structure rather than the upstream literal.
   assert(
     shareClientSource.includes('async acceptSuggestion(')
-      && shareClientSource.includes("/agent/${encodeURIComponent(this.slug)}/marks/accept"),
-    'Expected ShareClient to expose a dedicated acceptSuggestion mutation',
+      && shareClientSource.includes("path: 'accept'")
+      && shareClientSource.includes('/marks/${args.path}'),
+    'Expected ShareClient to expose a dedicated acceptSuggestion mutation routed to /marks/accept',
   );
 
   const acceptRouteBlock = sliceBetween(
