@@ -14,6 +14,7 @@ import { Fragment } from '@milkdown/kit/prose/model';
 import type { Node as ProseMirrorNode, MarkType } from '@milkdown/kit/prose/model';
 import { ySyncPluginKey } from 'y-prosemirror';
 import { buildTextIndex, getTextForRange, mapTextOffsetsToRange, resolveQuoteRange } from '../utils/text-range';
+import { canonicalizeAnchorTargetText } from '../../shared/anchor-target-text';
 import { SHARE_CONTENT_FILTER_ALLOW_META } from './share-content-filter';
 
 import {
@@ -27,6 +28,7 @@ import {
   type ReplaceData,
   type SuggestionStatus,
   type StoredMark,
+  type StoredMarkTarget,
   type OrchestratedMarkMeta,
   normalizeQuote,
   createApproval,
@@ -282,11 +284,88 @@ function resolveRangeFromRelativeAnchors(
   return mapTextOffsetsToRange(index, startOffset, endOffset);
 }
 
+// Window of extra characters scanned around a candidate when matching context,
+// to tolerate the separator (space/newline) between context and the anchor text.
+const TARGET_CONTEXT_WINDOW_CHARS = 4;
+
+// Resolve a range from a contextual anchor target. The target's anchor and context
+// strings may carry markdown; both are reduced to canonical visible text (with block
+// boundaries as '\n') so they can be matched against the document's visible text.
+// `contextBefore`/`contextAfter` disambiguate which occurrence of a repeated anchor
+// to pin to. Returns null when the anchor is missing, unmatched, or still ambiguous.
+function resolveRangeFromTarget(doc: ProseMirrorNode, target: StoredMarkTarget): MarkRange | null {
+  const canonical = canonicalizeAnchorTargetText({
+    anchor: typeof target.anchor === 'string' ? target.anchor : '',
+    contextBefore: typeof target.contextBefore === 'string' ? target.contextBefore : undefined,
+    contextAfter: typeof target.contextAfter === 'string' ? target.contextAfter : undefined,
+  });
+  const anchorText = canonical.anchor;
+  if (!anchorText) return null;
+
+  const index = buildTextIndex(doc);
+  if (!index) return null;
+  const docText = index.text;
+
+  const occurrences: number[] = [];
+  for (let from = docText.indexOf(anchorText); from !== -1; from = docText.indexOf(anchorText, from + 1)) {
+    occurrences.push(from);
+  }
+  if (occurrences.length === 0) return null;
+
+  const contextBefore = typeof canonical.contextBefore === 'string' ? canonical.contextBefore : '';
+  const contextAfter = typeof canonical.contextAfter === 'string' ? canonical.contextAfter : '';
+
+  let candidates = occurrences;
+  if (contextBefore || contextAfter) {
+    candidates = occurrences.filter((start) => {
+      const end = start + anchorText.length;
+      if (contextBefore) {
+        const windowStart = Math.max(0, start - (contextBefore.length + TARGET_CONTEXT_WINDOW_CHARS));
+        if (!docText.slice(windowStart, start).includes(contextBefore)) return false;
+      }
+      if (contextAfter) {
+        const windowEnd = Math.min(docText.length, end + contextAfter.length + TARGET_CONTEXT_WINDOW_CHARS);
+        if (!docText.slice(end, windowEnd).includes(contextAfter)) return false;
+      }
+      return true;
+    });
+  }
+  if (candidates.length === 0) return null;
+
+  const occurrence = target.occurrence;
+  let chosen: number | null = null;
+  if (occurrence === 'last') {
+    chosen = candidates[candidates.length - 1];
+  } else if (occurrence === 'first') {
+    chosen = candidates[0];
+  } else if (typeof occurrence === 'number' && Number.isInteger(occurrence) && occurrence >= 0 && occurrence < candidates.length) {
+    chosen = candidates[occurrence];
+  } else if (candidates.length === 1) {
+    chosen = candidates[0];
+  } else if (contextBefore || contextAfter) {
+    // Context narrowed the field but more than one match remains: take the first.
+    chosen = candidates[0];
+  } else {
+    // No context and multiple matches: ambiguous; defer to other strategies.
+    return null;
+  }
+
+  if (chosen === null) return null;
+  return mapTextOffsetsToRange(index, chosen, chosen + anchorText.length);
+}
+
 function resolveStoredMarkRange(doc: ProseMirrorNode, stored: StoredMark): MarkRange | null {
   const normalizedStoredQuote = typeof stored.quote === 'string'
     ? normalizeQuote(stored.quote)
     : '';
   const allowsQuoteLessAnchorFallback = stored.kind === 'authored';
+
+  // A contextual target is authoritative: it pins the mark to a specific occurrence
+  // of repeated text and must win over stale relative anchors / quote search.
+  if (stored.target && typeof stored.target.anchor === 'string' && stored.target.anchor.length > 0) {
+    const targetRange = resolveRangeFromTarget(doc, stored.target);
+    if (targetRange) return targetRange;
+  }
 
   const relativeRange = resolveRangeFromRelativeAnchors(doc, stored.startRel, stored.endRel);
   if (relativeRange) {
@@ -2844,8 +2923,11 @@ export function accept(view: EditorView, markId: string, parser?: MarkdownParser
 
   if (!applied) return false;
   const updatedMetadata = removeMetadataEntries(metadata, [markId]);
-  finalizeMarkTransaction(view, tr, updatedMetadata);
+  // Record the tombstone BEFORE dispatching (see reject): a server-marks merge
+  // fired during the synchronous dispatch must see the mark as gone, or it will
+  // resurrect the stale pending suggestion.
   markResolvedMarkIds([markId], Date.now(), RESOLVED_MARK_TOMBSTONE_TTL_MS, 'deleted');
+  finalizeMarkTransaction(view, tr, updatedMetadata);
   emitMarkEvent('suggestion.accepted', { markId, kind: mark.kind, by: mark.by });
   return true;
 }
@@ -2887,8 +2969,12 @@ export function reject(view: EditorView, markId: string): boolean {
   }
 
   const updatedMetadata = removeMetadataEntries(metadata, [markId]);
-  finalizeMarkTransaction(view, tr, updatedMetadata);
+  // Record the tombstone BEFORE dispatching: finalizeMarkTransaction dispatches
+  // synchronously, and a server-marks merge can fire during that dispatch. If the
+  // tombstone isn't set yet, mergePendingServerMarks won't know the mark was
+  // rejected and will resurrect the stale pending suggestion.
   markResolvedMarkIds([markId], Date.now(), RESOLVED_MARK_TOMBSTONE_TTL_MS, 'deleted');
+  finalizeMarkTransaction(view, tr, updatedMetadata);
   emitMarkEvent('suggestion.rejected', { markId, kind: mark.kind, by: mark.by });
   return true;
 }
@@ -2984,8 +3070,10 @@ export function rejectAll(view: EditorView): number {
 
   if (removedIds.length > 0) {
     const updatedMetadata = removeMetadataEntries(metadata, removedIds);
-    finalizeMarkTransaction(view, tr, updatedMetadata);
+    // Tombstone BEFORE dispatch (see reject): a dispatch-time server-marks merge
+    // must not resurrect the stale pending suggestions we just removed.
     markResolvedMarkIds(removedIds, Date.now(), RESOLVED_MARK_TOMBSTONE_TTL_MS, 'deleted');
+    finalizeMarkTransaction(view, tr, updatedMetadata);
   }
 
   return removedIds.length;
@@ -3007,8 +3095,10 @@ export function deleteMark(view: EditorView, markId: string): boolean {
     tr = tr.removeMark(range.from, range.to, markType);
   }
   const metadata = removeMetadataEntries(getMarkMetadata(view.state), [markId]);
-  finalizeMarkTransaction(view, tr, metadata);
+  // Tombstone BEFORE dispatch (see reject): a dispatch-time server-marks merge
+  // must not resurrect the mark we just deleted.
   markResolvedMarkIds([markId], Date.now(), RESOLVED_MARK_TOMBSTONE_TTL_MS, 'deleted');
+  finalizeMarkTransaction(view, tr, metadata);
   return true;
 }
 

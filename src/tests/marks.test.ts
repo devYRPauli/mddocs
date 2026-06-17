@@ -604,6 +604,79 @@ test('reject tombstones stale server suggestions before dispatch-time marks merg
   assert(!(markId in (pluginState?.metadata ?? {})), 'Dispatch-time marks merge should not resurrect rejected metadata');
 });
 
+test('accept tombstones stale server suggestions before dispatch-time marks merges', () => {
+  const markId = 'm-accept-dispatch-race';
+  const suggestionMark = marksSchema.marks.proofSuggestion.create({
+    id: markId,
+    kind: 'replace',
+    by: 'ai:test',
+    content: 'planet',
+    status: 'pending',
+    createdAt: new Date('2026-03-11T00:00:00.000Z').toISOString(),
+  });
+
+  const initialDoc = marksSchema.node('doc', null, [
+    marksSchema.node('paragraph', null, [
+      marksSchema.text('Hello '),
+      marksSchema.text('world', [suggestionMark]),
+    ]),
+  ]);
+
+  const marksStatePlugin = new Plugin({
+    key: marksPluginKey,
+    state: {
+      init: () => ({ metadata: {}, activeMarkId: null }),
+      apply: (tr, value) => {
+        const meta = tr.getMeta(marksPluginKey);
+        if (meta?.type === 'SET_METADATA') {
+          return { ...value, metadata: meta.metadata };
+        }
+        if (meta?.type === 'SET_ACTIVE') {
+          return { ...value, activeMarkId: meta.markId ?? null };
+        }
+        return value;
+      },
+    },
+  });
+
+  let state = EditorState.create({
+    schema: marksSchema,
+    doc: initialDoc,
+    plugins: [marksStatePlugin],
+  });
+
+  const remoteMetadata = {
+    [markId]: {
+      kind: 'replace' as const,
+      by: 'ai:test',
+      createdAt: new Date('2026-03-11T00:00:00.000Z').toISOString(),
+      content: 'planet',
+      status: 'pending' as const,
+      quote: 'world',
+    },
+  };
+
+  state = state.apply(state.tr.setMeta(marksPluginKey, { type: 'SET_METADATA', metadata: remoteMetadata }));
+
+  const view = {
+    get state() {
+      return state;
+    },
+    dispatch(tr: any) {
+      state = state.apply(tr);
+      const merged = mergePendingServerMarks(getMarkMetadataWithQuotes(state), remoteMetadata);
+      state = state.apply(state.tr.setMeta(marksPluginKey, { type: 'SET_METADATA', metadata: merged }));
+    },
+  } as any;
+
+  const accepted = acceptMark(view, markId);
+  assert(accepted, 'Accept should succeed');
+
+  const pluginState = marksPluginKey.getState(state) as { metadata: Record<string, unknown> } | undefined;
+  assert(pluginState !== undefined, 'Plugin state should exist');
+  assert(!(markId in (pluginState?.metadata ?? {})), 'Dispatch-time marks merge should not resurrect accepted metadata');
+});
+
 test('applyRemoteMarks ignores mismatched relative anchors and falls back to quote', () => {
   const markId = 'm-remote-relative-mismatch';
   const doc = marksSchema.node('doc', null, [

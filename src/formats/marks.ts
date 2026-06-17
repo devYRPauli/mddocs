@@ -237,6 +237,22 @@ export interface StoredMark {
   debugAutoFixedQuotesReason?: string;
   /** Quote text for remote sync — allows recreating ProseMirror anchors on remote clients */
   quote?: string;
+  /** Contextual anchor target — disambiguates which occurrence of a repeated quote to anchor. */
+  target?: StoredMarkTarget;
+}
+
+/**
+ * Contextual anchor target. When present, this is authoritative over stale relative
+ * anchors (startRel/endRel): it pins a mark to a specific occurrence of repeated text
+ * using surrounding context. `anchor`/`contextBefore`/`contextAfter` may carry markdown
+ * (mode 'normalized') or canonical visible text (mode 'exact').
+ */
+export interface StoredMarkTarget {
+  anchor: string;
+  mode?: 'exact' | 'normalized' | 'contextual';
+  contextBefore?: string;
+  contextAfter?: string;
+  occurrence?: 'first' | 'last' | number;
 }
 
 export interface MarksMetadataDocument {
