@@ -175,11 +175,19 @@ async function run(): Promise<void> {
 
     await waitFor(() => markdownText.toString().includes('OSS'), 5_000, 'accepted markdown applied');
 
+    // Accepting a suggestion finalizes it into an authored mark in the live doc: the
+    // suggestion mark is consumed (not kept with status:'accepted') and the accepted
+    // text becomes authored content. Wait for that finalization - the suggestion mark
+    // gone and its authored replacement present.
     await waitFor(() => {
-      const mark = marksMap.get(suggestionId) as Record<string, unknown> | undefined;
-      return mark?.status === 'accepted';
-    }, 5_000, 'accepted mark present in collab map');
+      const suggestionGone = marksMap.get(suggestionId) === undefined;
+      const authoredPresent = [...marksMap.keys()].some((key) => key.startsWith('authored:'));
+      return suggestionGone && authoredPresent;
+    }, 5_000, 'accepted suggestion finalized into an authored mark in collab map');
 
+    // A client cleaning up the consumed suggestion marker during the accept's
+    // canonical-stability verification window must not break convergence: the
+    // suggestion mark is not part of canonical content, so removing it is tolerated.
     marksMap.doc?.transact(() => {
       marksMap.delete(suggestionId);
     }, 'test-accepted-mark-cleanup');
@@ -234,7 +242,11 @@ async function run(): Promise<void> {
   }
 }
 
-run().catch((err) => {
-  console.error(err instanceof Error ? err.message : String(err));
-  process.exit(1);
-});
+run()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
