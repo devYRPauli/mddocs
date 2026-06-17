@@ -341,6 +341,21 @@ function trimContextSnippet(value: string): string {
   return value.replace(/^\s+|\s+$/g, '');
 }
 
+// Keep stored context local to the line adjacent to the anchor. Capturing the full
+// preceding/following window makes the context span block boundaries, so any edit
+// upstream of the anchor (e.g. an inserted duplicate paragraph) breaks the contiguous
+// context match and the mark can no longer be resolved. The immediately-adjacent line
+// is enough to disambiguate repeated anchors while surviving such drift.
+function lastContextLine(value: string): string {
+  const idx = value.lastIndexOf('\n');
+  return idx >= 0 ? value.slice(idx + 1) : value;
+}
+
+function firstContextLine(value: string): string {
+  const idx = value.indexOf('\n');
+  return idx >= 0 ? value.slice(0, idx) : value;
+}
+
 export function stabilizeAnchorTarget(
   source: string,
   target: AnchorTarget,
@@ -353,8 +368,8 @@ export function stabilizeAnchorTarget(
   const view = buildLogicalView(source, options.stripAuthoredSpans ?? false);
   const anchor = view.logical.slice(resolved.selection.logicalStart, resolved.selection.logicalEnd) || String(target.anchor ?? '');
   const windowChars = options.contextWindowChars ?? DEFAULT_CONTEXT_WINDOW;
-  const before = trimContextSnippet(view.logical.slice(Math.max(0, resolved.selection.logicalStart - Math.min(windowChars, 120)), resolved.selection.logicalStart));
-  const after = trimContextSnippet(view.logical.slice(resolved.selection.logicalEnd, Math.min(view.logical.length, resolved.selection.logicalEnd + Math.min(windowChars, 120))));
+  const before = lastContextLine(trimContextSnippet(view.logical.slice(Math.max(0, resolved.selection.logicalStart - Math.min(windowChars, 120)), resolved.selection.logicalStart)));
+  const after = firstContextLine(trimContextSnippet(view.logical.slice(resolved.selection.logicalEnd, Math.min(view.logical.length, resolved.selection.logicalEnd + Math.min(windowChars, 120)))));
   return {
     anchor,
     mode: resolved.mode,
