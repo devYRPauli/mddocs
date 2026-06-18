@@ -31,8 +31,9 @@ function countOccurrences(haystack: string, needle: string): number {
 }
 
 type CreatedDoc = { slug: string; ownerSecret: string };
-type StatePayload = { updatedAt: string };
+type StatePayload = { updatedAt: string | null; mutationBase?: { token: string } };
 type ReadDocPayload = { markdown: string };
+
 
 async function mustJson<T>(res: Response, label: string): Promise<T> {
   const text = await res.text().catch(() => '');
@@ -134,11 +135,19 @@ async function run(): Promise<void> {
   process.env.DATABASE_PATH = dbPath;
   process.env.COLLAB_EMBEDDED_WS = '1';
 
-  const [{ apiRoutes }, { agentRoutes }, collab] = await Promise.all([
+  const [{ apiRoutes }, { agentRoutes }, collab, milkdown] = await Promise.all([
     import('../../server/routes.js'),
     import('../../server/agent-routes.js'),
     import('../../server/collab.js'),
+    import('../../server/milkdown-headless.js'),
   ]);
+  const { parseMarkdown } = await milkdown.getHeadlessMilkdownParser();
+  // The fork serializes the live Yjs fragment to canonical markdown (idempotent,
+  // lossless on visible text) which differs from hand-written input only in
+  // canonical emphasis/block-spacing. Compare both sides through the same
+  // serializer so the assertion verifies content fidelity, not surface form.
+  const canonicalize = async (md: string): Promise<string> =>
+    (await milkdown.serializeMarkdown(parseMarkdown(md) as Parameters<typeof milkdown.serializeMarkdown>[0])).trim();
 
   const app = express();
   app.use(express.json({ limit: '2mb' }));
@@ -208,7 +217,12 @@ async function run(): Promise<void> {
         },
         body: JSON.stringify({
           by: 'ai:test-loop',
-          baseUpdatedAt: state.updatedAt,
+          // The loaded collab doc is deliberately drifted, so the read is not
+          // mutation-ready and withholds updatedAt; precondition on the
+          // authoritative mutation base token it hands out instead.
+          ...(state.mutationBase?.token
+            ? { baseToken: state.mutationBase.token }
+            : { baseUpdatedAt: state.updatedAt as string }),
           operations: [
             {
               op: 'replace',
@@ -227,7 +241,7 @@ async function run(): Promise<void> {
       const doc = await mustJson<ReadDocPayload>(docRes, `read[${i}]`);
       const expectedMarkdown = `${DOC_PREFIX}${targetSection}${DOC_SUFFIX}`;
       assert(
-        doc.markdown === expectedMarkdown,
+        (await canonicalize(doc.markdown)) === (await canonicalize(expectedMarkdown)),
         `Iteration ${i} produced unexpected markdown length=${doc.markdown.length} expected=${expectedMarkdown.length}`,
       );
       assert(
