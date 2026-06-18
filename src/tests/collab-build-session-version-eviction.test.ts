@@ -89,7 +89,11 @@ async function run(): Promise<void> {
   }
 }
 
-run().catch((err) => {
-  console.error(err instanceof Error ? err.message : String(err));
-  process.exit(1);
-});
+run()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
