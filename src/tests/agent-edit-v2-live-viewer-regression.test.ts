@@ -145,7 +145,15 @@ async function run(): Promise<void> {
     const stateRes = await fetch(`${httpBase}/api/agent/${created.slug}/state`, {
       headers: { ...CLIENT_HEADERS, 'x-share-token': created.ownerSecret },
     });
-    const state = await mustJson<{ revision: number }>(stateRes, 'state');
+    const state = await mustJson<{
+      revision: number | null;
+      mutationBase?: { token: string };
+    }>(stateRes, 'state');
+    // With a live viewer connected the fork withholds a numeric revision
+    // (mutationReady=false) and instead hands out an authoritative mutation base
+    // token. Agent edits must precondition on that baseToken, not baseRevision.
+    const baseToken = state.mutationBase?.token;
+    assert(typeof baseToken === 'string' && baseToken.length > 0, 'Expected /state to provide an authoritative mutation base token under live presence');
 
     // Simulate a stale client repeatedly replaying pre-edit content during edit.v2 apply.
     let replayCount = 0;
@@ -171,7 +179,7 @@ async function run(): Promise<void> {
       },
       body: JSON.stringify({
         by: 'ai:regression-test',
-        baseRevision: state.revision,
+        baseToken,
         operations: [
           { op: 'replace_block', ref: 'b3', block: { markdown: '**✅ Done**' } },
           { op: 'delete_block', ref: 'b5' },
@@ -181,7 +189,13 @@ async function run(): Promise<void> {
     const edit = await editRes.json() as {
       success?: boolean;
       code?: string;
-      collab?: { status?: string; reason?: string };
+      collab?: {
+        status?: string;
+        reason?: string;
+        canonicalStatus?: string;
+        canonicalExpectedHash?: string;
+        canonicalObservedHash?: string;
+      };
     };
     clearInterval(replayInterval);
     const acceptedHardFail = editRes.status === 409 && edit.code === 'FRAGMENT_DIVERGENCE';
@@ -189,9 +203,22 @@ async function run(): Promise<void> {
       editRes.status === 200
       && edit.success === true
       && edit.collab?.status === 'pending';
+    // A baseToken-preconditioned edit may also legitimately CONFIRM under stale
+    // live replay: the authoritative mutation base anchors the edit and the server
+    // verifies the canonical content hash matches what the edit expected. That is a
+    // verified (not false) confirmation - the stale replay did not corrupt it - and
+    // is the safe outcome this regression guards. An unverified confirmation
+    // (status confirmed without a matching canonical hash) would be the bug.
+    const acceptedVerifiedConfirm =
+      editRes.status === 200
+      && edit.success === true
+      && edit.collab?.status === 'confirmed'
+      && edit.collab?.canonicalStatus === 'confirmed'
+      && typeof edit.collab?.canonicalObservedHash === 'string'
+      && edit.collab.canonicalObservedHash === edit.collab.canonicalExpectedHash;
     assert(
-      acceptedHardFail || acceptedPending,
-      `Expected stale live replay pressure to hard-fail or return pending, got ${editRes.status}: ${JSON.stringify(edit).slice(0, 500)}`,
+      acceptedHardFail || acceptedPending || acceptedVerifiedConfirm,
+      `Expected stale live replay pressure to hard-fail, return pending, or confirm with a verified canonical hash, got ${editRes.status}: ${JSON.stringify(edit).slice(0, 500)}`,
     );
 
     const readRes = await fetch(`${httpBase}/api/documents/${created.slug}`, {
