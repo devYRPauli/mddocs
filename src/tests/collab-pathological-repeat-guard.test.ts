@@ -41,9 +41,22 @@ async function run(): Promise<void> {
   assert(maxCharsSafety.safe === false, 'Expected max chars guard to block oversized projection');
   assert(maxCharsSafety.reason === 'max_chars_exceeded', `Expected max chars reason, got ${String(maxCharsSafety.reason)}`);
 
-  const growthSafety = evaluateProjectionSafety(base, base.repeat(9), fragmentDoc);
+  // A non-repeating candidate that blows past the growth multiplier is reported
+  // as growth_multiplier_exceeded. An exact NX repeat is intercepted earlier by
+  // the canonical-replay guard and reported as pathological_repeat instead (see
+  // the explosive-repeat assertion below), so the growth case must use input
+  // that is large but not an exact repetition of the baseline.
+  const explosiveNonRepeat = Array.from({ length: 9000 }, (_, i) => `tok${i}`).join(' ');
+  const growthSafety = evaluateProjectionSafety(base, explosiveNonRepeat, fragmentDoc);
   assert(growthSafety.safe === false, 'Expected growth multiplier guard to block explosive projection');
   assert(growthSafety.reason === 'growth_multiplier_exceeded', `Expected growth reason, got ${String(growthSafety.reason)}`);
+
+  const explosiveRepeatSafety = evaluateProjectionSafety(base, base.repeat(9), fragmentDoc);
+  assert(explosiveRepeatSafety.safe === false, 'Expected an exact 9x repeat to be blocked');
+  assert(
+    explosiveRepeatSafety.reason === 'pathological_repeat',
+    `Expected an exact 9x repeat to be classified as pathological_repeat via the canonical-replay guard, got ${String(explosiveRepeatSafety.reason)}`,
+  );
 
   const repeatSafety = evaluateProjectionSafety(base, repeated3, fragmentDoc);
   assert(repeatSafety.safe === false, 'Expected pathological repeat guard to block repeated projection');
