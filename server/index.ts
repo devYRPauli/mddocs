@@ -8,6 +8,7 @@ import { agentRoutes } from './agent-routes.js';
 import { setupWebSocket } from './ws.js';
 import { createBridgeMountRouter } from './bridge.js';
 import { getCollabRuntime, startCollabRuntimeEmbedded } from './collab.js';
+import { cleanupIdempotencyKeys, cleanupMutationOutbox } from './db.js';
 import { discoveryRoutes } from './discovery-routes.js';
 import { shareWebRoutes } from './share-web-routes.js';
 import {
@@ -134,6 +135,23 @@ async function main(): Promise<void> {
   server.listen(PORT, () => {
     console.log(`[proof-sdk] listening on http://127.0.0.1:${PORT}`);
   });
+
+  // Periodic maintenance: prune expired idempotency keys and processed mutation
+  // outbox rows so these tables do not grow without bound. db.ts defaults keep
+  // idempotency keys for 24h and outbox rows for 30 days. Wrapped so a read-only
+  // database (or any cleanup failure) never takes the server down, and unref'd so
+  // the timer does not keep the process alive on shutdown.
+  const MAINTENANCE_INTERVAL_MS = 60 * 60 * 1000;
+  const runStartupMaintenance = (): void => {
+    try {
+      cleanupIdempotencyKeys();
+      cleanupMutationOutbox();
+    } catch (error) {
+      console.warn('[proof-sdk] startup maintenance cleanup failed', error);
+    }
+  };
+  runStartupMaintenance();
+  setInterval(runStartupMaintenance, MAINTENANCE_INTERVAL_MS).unref();
 }
 
 main().catch((error) => {
