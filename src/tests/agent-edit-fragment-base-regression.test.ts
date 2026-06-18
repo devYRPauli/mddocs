@@ -251,16 +251,19 @@ async function run(): Promise<void> {
       `Expected /edit/v2 guidance, got ${String(edit.recommendedEndpoint)}`,
     );
 
+    // Check the canonical PROJECTION directly (same accessor as the pre-edit
+    // staleness assert above), not /state over HTTP: when the projection is stale
+    // (mutationReady=false) /state correctly serves the yjs_fallback (the live
+    // fragment), which legitimately contains the browser marker. The intent here
+    // is that the blocked legacy edit left the canonical projection unchanged -
+    // neither the browser fragment edit nor the rejected API edit landed in it.
     await waitFor(async () => {
-      const latestRes = await fetch(`${httpBase}/api/agent/${created.slug}/state`, {
-        headers: { ...CLIENT_HEADERS, 'x-share-token': created.ownerSecret },
-      });
-      const latest = await mustJson<StateResponse>(latestRes, 'latest state');
-      const content = typeof latest.markdown === 'string' ? latest.markdown : (latest.content || '');
+      const projection = collab.getLoadedCollabMarkdown(created.slug);
+      const content = typeof projection === 'string' ? projection : '';
       const hasBrowserMarker = content.includes(browserMarker) || content.includes(escapedBrowserMarker);
       const hasApiMarker = content.includes(apiMarker) || content.includes(escapedApiMarker);
       return !hasBrowserMarker && !hasApiMarker;
-    }, 10_000, 'canonical state remains unchanged after blocked legacy edit');
+    }, 10_000, 'canonical projection remains unchanged after blocked legacy edit');
 
     try {
       await waitFor(async () => {
