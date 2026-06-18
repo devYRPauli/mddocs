@@ -53,8 +53,9 @@ type EditResponse = {
   };
 };
 type SnapshotResponse = {
-  revision: number;
+  revision: number | null;
   blocks?: Array<{ ref?: string; markdown?: string }>;
+  mutationBase?: { token: string };
 };
 type CollabSessionResponse = {
   success: boolean;
@@ -266,7 +267,12 @@ async function run(): Promise<void> {
       },
       body: JSON.stringify({
         by: 'ai:r2c2',
-        baseRevision: snapshot.revision,
+        // The human's live edit left the fragment ahead of canonical, so the
+        // snapshot withholds a numeric revision (mutationReady=false) and hands
+        // out an authoritative mutation base token instead. Precondition on it.
+        ...(snapshot.mutationBase?.token
+          ? { baseToken: snapshot.mutationBase.token }
+          : { baseRevision: snapshot.revision as number }),
         operations: [
           {
             op: 'insert_after',
