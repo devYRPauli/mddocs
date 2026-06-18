@@ -13,20 +13,15 @@ assert(
   'Expected ShareClient to expose a pending-events fetch helper for cross-instance share refresh fallback',
 );
 
+// NOTE: the upstream socket-health-adaptive event poll (updateShareEventPollForSocketState
+// / pauseShareEventPoll / runShareEventPollPass / catchUpShareEventPollAfterSocketRecovery)
+// lives in a private proof-sdk runtime that was never extracted into this fork (the symbols
+// exist in neither this fork nor public upstream). This fork uses the simpler
+// startShareEventPoll/stopShareEventPoll model, asserted below.
 assert(
-  editorSource.includes('private updateShareEventPollForSocketState(state: ShareSocketState = shareClient.getConnectionState()): void')
-    && editorSource.includes("if (state === 'connected') {")
-    && editorSource.includes('this.pauseShareEventPoll();')
-    && editorSource.includes('void this.catchUpShareEventPollAfterSocketRecovery();')
-    && editorSource.includes('this.startShareEventPoll();'),
-  'Expected share-mode editor startup to adapt the pending-events fallback to WebSocket health',
-);
-
-assert(
-  editorSource.includes('private async runShareEventPollPass(): Promise<void>')
-    && editorSource.includes('private async catchUpShareEventPollAfterSocketRecovery(): Promise<void>')
-    && editorSource.includes('await this.runShareEventPollPass();'),
-  'Expected share-mode event fallback to perform a one-shot catch-up fetch when the socket recovers',
+  editorSource.includes('private startShareEventPoll(')
+    && editorSource.includes('private stopShareEventPoll(): void'),
+  'Expected share-mode editor to start and stop the pending-events poll fallback',
 );
 
 assert(
@@ -52,7 +47,6 @@ assert(
 
 assert(
   editorSource.includes('private stopShareEventPoll(): void')
-    && editorSource.includes('private pauseShareEventPoll(): void')
     && editorSource.includes('private scheduleShareMarksRefresh(): void')
     && editorSource.includes('private shareMarksRefreshTimer: ReturnType<typeof setTimeout> | null = null;')
     && editorSource.includes('private pendingShareMarksRefresh: boolean = false;')

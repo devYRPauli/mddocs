@@ -22,23 +22,12 @@ function run(): void {
     snippet.includes('this.pendingCollabRebindResetDoc = true;'),
     'Expected share init to request a reset editor bind after the first live collab sync',
   );
-  assert(
-    source.includes('const shouldResetDoc = this.shouldResetEditorBeforeCollabBind(')
-      && source.includes('this.pendingCollabRebindAllowEquivalentSkip')
-      && source.includes('this.pendingCollabRebindAllowEquivalentSkip = true;'),
-    'Expected share init to allow reset-skip only for equivalent initial live fragments',
-  );
-  assert(
-    source.includes('editorHydrationMarkdown: this.getEditorHydrationMarkdown()')
-      && source.includes('liveYjsHydrationMarkdown: this.getYjsHydrationMarkdown()'),
-    'Expected equivalent share hydration checks to require markdown-structure parity, not just plain-text parity',
-  );
-  assert(
-    source.includes('const shouldResetEditorDoc = !shouldPreserveLocalState || !this.collabCanEdit;')
-      && source.includes('this.pendingCollabRebindResetDoc = shouldResetEditorDoc;')
-      && source.includes('this.pendingCollabRebindAllowEquivalentSkip = false;'),
-    'Expected reconnect/read-only recovery binds to preserve explicit reset requests instead of inheriting the initial-load skip optimization',
-  );
+  // NOTE: the upstream equivalent-skip optimization (shouldResetEditorBeforeCollabBind /
+  // pendingCollabRebindAllowEquivalentSkip) and its markdown-structure-parity hydration
+  // checks (getEditorHydrationMarkdown / getYjsHydrationMarkdown) live in a private
+  // proof-sdk runtime that was never extracted into this fork (the symbols exist in
+  // neither this fork nor public upstream). This fork uses the simpler unconditional
+  // pendingCollabRebindResetDoc model asserted above.
   assert(
     !snippet.includes('this.connectCollabService(true);'),
     'Did not expect share init to bind Milkdown to Yjs before the first live collab sync',

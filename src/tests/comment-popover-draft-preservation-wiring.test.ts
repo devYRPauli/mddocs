@@ -57,13 +57,16 @@ function run(): void {
     editorSource.includes('private async refreshCollabSessionAfterDocumentUpdated(): Promise<void>'),
     'Expected dedicated document-updated refresh method with draft preservation',
   );
+  // NOTE: the upstream queued-recovery path (scheduleCollabRecovery('document-updated') with a
+  // refreshed-return-value gate) lives in a private proof-sdk runtime not extracted into this
+  // fork. This fork preserves drafts via a direct capture -> reconnect -> restore sequence in
+  // refreshCollabSessionAfterDocumentUpdated, asserted here.
   assert(
-    editorSource.includes("this.scheduleCollabRecovery('document-updated', {")
-      && editorSource.includes('const draftSnapshot = preserveCommentDraft')
-      && editorSource.includes('this.captureCommentPopoverDraftSnapshot()')
-      && editorSource.includes('if (refreshed && draftSnapshot) {')
+    editorSource.includes('const draftSnapshot = this.captureCommentPopoverDraftSnapshot();')
+      && editorSource.includes('await this.refreshCollabSessionAndReconnect(false);')
+      && editorSource.includes('if (draftSnapshot) {')
       && editorSource.includes('this.restoreCommentPopoverDraftWithRetry(draftSnapshot);'),
-    'Expected document-updated refreshes to preserve drafts through the queued recovery path',
+    'Expected document-updated refreshes to preserve comment popover drafts across the reconnect',
   );
   assert(
     editorSource.includes('collabClient.onDocumentUpdated(() => {')
