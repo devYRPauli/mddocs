@@ -6,6 +6,7 @@ import { dirname, join, normalize, resolve } from 'node:path'
 import { WebSocketServer } from 'ws'
 import { configureCollab, type CollabServerOptions } from './collab'
 import { createAgentApi } from './agent'
+import { createEventLog, createPresenceRegistry, observeDocForEvents } from './events'
 import { loadDoc } from './doc'
 
 export interface AgentRateLimit {
@@ -30,6 +31,11 @@ export interface ShareServeOptions extends CollabServerOptions {
    * agent token is generated (backward compatible).
    */
   agents?: AgentConfig[]
+  /**
+   * Debounce (ms) for coalescing dense prose edits into one `document.changed`
+   * event. Defaults to 150ms.
+   */
+  eventDebounceMs?: number
 }
 
 export type ShareRole = 'editor' | 'commenter' | 'viewer'
@@ -163,6 +169,17 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
   // M3: agent operations inject into the live doc via a Hocuspocus DirectConnection.
   const agent = createAgentApi(hocuspocus, slug)
 
+  // Presence + events: agents announce activity (presence) and poll for what
+  // humans and other agents did (events). A dedicated direct connection gives us
+  // the canonical live Y.Doc - the same instance every browser editor and agent
+  // mutation touches - so observing it surfaces all activity as pollable events.
+  const eventLog = createEventLog()
+  const presence = createPresenceRegistry()
+  const obsConn = await hocuspocus.openDirectConnection(slug)
+  const disposeObserve = obsConn.document
+    ? observeDocForEvents(obsConn.document, eventLog, { debounceMs: opts.eventDebounceMs })
+    : () => {}
+
   async function serveStatic(urlPath: string, res: ServerResponse): Promise<void> {
     // The bare /d/:slug document route serves the editor shell (SPA). Asset
     // requests resolve relative to that route (e.g. /d/assets/editor.js), so we
@@ -234,7 +251,7 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
           }
           const modelFrom = (b: Record<string, unknown>) => (b.model as string | undefined) ?? entry.name
           if (urlPath === `/api/agent/${slug}/state` && req.method === 'GET') {
-            sendJson(res, 200, await agent.getState())
+            sendJson(res, 200, { ...(await agent.getState()), presence: presence.list() })
             return
           }
           if (urlPath === `/api/agent/${slug}/comment` && req.method === 'POST') {
@@ -289,6 +306,80 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
             }))
             return
           }
+          // Presence: announce the agent is active on the doc (status/details),
+          // visible to other agents via /state and as an agent.presence event.
+          if (urlPath === `/api/agent/${slug}/presence` && req.method === 'POST') {
+            const b = await readJsonBody(req)
+            const id =
+              (typeof b.id === 'string' && b.id.trim()) ||
+              (typeof b.agentId === 'string' && b.agentId.trim()) ||
+              `ai:${entry.name}`
+            const at = new Date().toISOString()
+            const ent = presence.upsert({
+              id,
+              name: typeof b.name === 'string' ? b.name : entry.name,
+              color: typeof b.color === 'string' ? b.color : undefined,
+              avatar: typeof b.avatar === 'string' ? b.avatar : undefined,
+              status: typeof b.status === 'string' && b.status.trim() ? b.status.trim() : 'idle',
+              details:
+                typeof b.details === 'string'
+                  ? b.details
+                  : typeof b.summary === 'string'
+                    ? b.summary
+                    : '',
+              at,
+            })
+            eventLog.add('agent.presence', { ...ent }, id)
+            sendJson(res, 200, { success: true, slug, presence: presence.list() })
+            return
+          }
+          if (urlPath === `/api/agent/${slug}/presence/disconnect` && req.method === 'POST') {
+            const b = await readJsonBody(req)
+            const id =
+              (typeof b.agentId === 'string' && b.agentId.trim()) ||
+              (typeof b.id === 'string' && b.id.trim()) ||
+              ''
+            if (!id) {
+              sendJson(res, 400, { error: 'disconnect needs { agentId }' })
+              return
+            }
+            const removed = presence.remove(id)
+            const by = typeof b.by === 'string' && b.by.trim() ? b.by.trim() : `ai:${entry.name}`
+            eventLog.add(
+              'agent.disconnected',
+              { id, status: 'disconnected', details: typeof b.details === 'string' ? b.details : '', at: new Date().toISOString() },
+              by,
+            )
+            sendJson(res, 200, { success: true, slug, agentId: id, disconnected: true, removed })
+            return
+          }
+          // Events: poll for activity newer than `after` (the previous cursor),
+          // then ack up to a cursor once handled. Captures human + agent edits.
+          if (urlPath === `/api/agent/${slug}/events/pending` && req.method === 'GET') {
+            const q = (req.url ?? '').split('?')[1]
+            const params = new URLSearchParams(q ?? '')
+            const after = Math.max(0, Number.parseInt(params.get('after') ?? '0', 10) || 0)
+            const rawLimit = Number.parseInt(params.get('limit') ?? '100', 10)
+            const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : 100
+            const events = eventLog.list(after, limit)
+            sendJson(res, 200, {
+              success: true,
+              events,
+              cursor: events.length > 0 ? events[events.length - 1].id : after,
+            })
+            return
+          }
+          if (urlPath === `/api/agent/${slug}/events/ack` && req.method === 'POST') {
+            const b = await readJsonBody(req)
+            const upToId = typeof b.upToId === 'number' ? b.upToId : Number.NaN
+            if (!Number.isFinite(upToId) || upToId < 0) {
+              sendJson(res, 400, { error: 'ack needs { upToId }' })
+              return
+            }
+            const by = typeof b.by === 'string' && b.by.trim() ? b.by.trim() : `ai:${entry.name}`
+            sendJson(res, 200, { success: true, acked: eventLog.ack(Math.trunc(upToId), by) })
+            return
+          }
           sendJson(res, 404, { error: 'unknown agent endpoint' })
           return
         }
@@ -331,6 +422,8 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
     port: boundPort,
     slug,
     async stop() {
+      disposeObserve()
+      await obsConn.disconnect()
       await agent.stop()
       await hocuspocus.destroy()
       await session.stop()

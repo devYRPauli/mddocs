@@ -50,7 +50,7 @@ server. `mddocs` takes a different approach:
 | Browser editor (comments, suggestions, provenance) | `mddocs open <file>` (single-user) or `mddocs serve <file>` (multiplayer) |
 | Real-time multiplayer with presence | `mddocs serve <file>`: everyone on the URL co-edits live; edits persist to the file plus git |
 | Role-based share links (editor / commenter / viewer) | `serve` prints a link per role; roles enforced server-side (viewers read-only, commenters cannot edit prose) |
-| Agent HTTP API | AI tools read state, post comments/suggestions, or rewrite prose live, attributed to `ai:<model>` |
+| Agent HTTP API | AI tools read state, post comments/suggestions, rewrite prose, announce presence, and poll document events live, attributed to `ai:<model>` |
 | Comments and suggestions from the terminal | `mddocs comment ...`, `mddocs suggest ...`, `mddocs accept`/`reject` |
 | History and diff | `mddocs log <file>`, `mddocs diff <file> [rev]` (plain git underneath) |
 | Async multiplayer and conflict resolution | edit on branches; `mddocs resolve <file>` unions a conflicted PROOF footer |
@@ -144,11 +144,15 @@ appears in every connected editor in real time and persists to git, attributed t
 `x-share-token` header.
 
 ```
-GET  /api/agent/:slug/state                                              -> { content, marks }
+GET  /api/agent/:slug/state                                              -> { content, marks, presence }
 POST /api/agent/:slug/comment  { quote, text, model? }                   -> { id }
 POST /api/agent/:slug/reply    { id, text, model? }                      -> { id, replies }
 POST /api/agent/:slug/suggest  { quote, replace|insert|delete, model? }  -> { id, kind }
 POST /api/agent/:slug/rewrite  { markdown, quote?, model? }              -> { chars, by, markId? }
+POST /api/agent/:slug/presence { id?, name?, status?, details? }         -> { presence }
+POST /api/agent/:slug/presence/disconnect { agentId }                    -> { disconnected }
+GET  /api/agent/:slug/events/pending?after=<id>&limit=<n>                -> { events, cursor }
+POST /api/agent/:slug/events/ack { upToId, by? }                         -> { acked }
 ```
 
 `reply` appends to an existing comment thread (the same threads the CLI's
@@ -156,6 +160,29 @@ POST /api/agent/:slug/rewrite  { markdown, quote?, model? }              -> { ch
 `comment` call. `suggest` proposes a change a human accepts; `rewrite` edits the prose directly.
 With a `quote`, `rewrite` replaces that span; without one it replaces the whole
 body. The change is applied to the live document and recorded as an authored mark.
+
+### Presence and events
+
+`presence` lets an agent announce it is active on the document (with a `status`
+like `reviewing` and a free-text `details`); it shows up in every `state` read's
+`presence` array and as an `agent.presence` event. `presence/disconnect` removes
+it (and emits `agent.disconnected`). The default identity is the token's agent
+name (`ai:<name>`); pass `id` to override.
+
+`events/pending` is how an agent reacts to what humans and other agents did,
+without holding a WebSocket. Both browser edits and agent mutations land on the
+same live document, so all activity surfaces uniformly:
+
+- `mark.added` / `mark.updated` / `mark.removed` - a comment, suggestion,
+  accept/reject, reply, or provenance mark changed (`data.markId`, `data.kind`,
+  `data.by`, and `data.status` for suggestions).
+- `document.changed` - the prose changed (coalesced while someone is typing).
+- `agent.presence` / `agent.disconnected` - presence came or went.
+
+Poll with `?after=<cursor>` to receive only events newer than the last `cursor`
+you saw; each event carries a monotonic `id` and an `actor` (`ai:<model>`,
+`human:<name>`, or `unknown`). Call `events/ack` with `upToId` once you have
+handled them. Events are kept in memory for the life of the `serve` session.
 
 By default `serve` issues one shared agent token. Pass `--agent <name>` (repeatable)
 to register named agents, each with its own token; `serve` then prints a token per
@@ -282,12 +309,13 @@ browser-interactive path is verified manually.
 - M2.5: share links and roles (editor/commenter/viewer, server-side role
   enforcement: viewers read-only, commenters cannot edit prose). Done.
 - M3: agent HTTP API (read state, comment, suggest, and rewrite prose live). Done.
+- M3.5: agent presence and events (announce activity; poll mark/prose/presence
+  changes from humans and other agents with an after-cursor and ack). Done.
 
 ## Upcoming updates
 
 Contributions welcome. Next on the list:
 
-- Presence and events for agents.
 - Publish under a real, unscoped npm project name (currently the `@devyrpauli`
   scope while the name is settled).
 - Upstream the `@proof/core` TS2308 fix
