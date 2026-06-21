@@ -149,10 +149,10 @@ POST /api/agent/:slug/comment  { quote, text, model? }                   -> { id
 POST /api/agent/:slug/reply    { id, text, model? }                      -> { id, replies }
 POST /api/agent/:slug/suggest  { quote, replace|insert|delete, model? }  -> { id, kind }
 POST /api/agent/:slug/rewrite  { markdown, quote?, model? }              -> { chars, by, markId? }
-POST /api/agent/:slug/presence { id?, name?, status?, details? }         -> { presence }
-POST /api/agent/:slug/presence/disconnect { agentId }                    -> { disconnected }
+POST /api/agent/:slug/presence { name?, status?, details? }              -> { presence }
+POST /api/agent/:slug/presence/disconnect                               -> { disconnected }
 GET  /api/agent/:slug/events/pending?after=<id>&limit=<n>                -> { events, cursor }
-POST /api/agent/:slug/events/ack { upToId, by? }                         -> { acked }
+POST /api/agent/:slug/events/ack { upToId }                             -> { acked }
 ```
 
 `reply` appends to an existing comment thread (the same threads the CLI's
@@ -166,8 +166,11 @@ body. The change is applied to the live document and recorded as an authored mar
 `presence` lets an agent announce it is active on the document (with a `status`
 like `reviewing` and a free-text `details`); it shows up in every `state` read's
 `presence` array and as an `agent.presence` event. `presence/disconnect` removes
-it (and emits `agent.disconnected`). The default identity is the token's agent
-name (`ai:<name>`); pass `id` to override.
+the caller's own presence (and emits `agent.disconnected`). The presence identity
+and every event `actor` are bound to the agent token (`ai:<name>`, from the
+token's `--agent` name) and cannot be set from the request, so one agent cannot
+impersonate or disconnect another. Run `serve --agent <name>` (repeatable) to
+give each agent its own token and identity.
 
 `events/pending` is how an agent reacts to what humans and other agents did,
 without holding a WebSocket. Both browser edits and agent mutations land on the

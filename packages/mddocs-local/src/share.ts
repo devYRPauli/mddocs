@@ -308,15 +308,16 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
           }
           // Presence: announce the agent is active on the doc (status/details),
           // visible to other agents via /state and as an agent.presence event.
+          // Identity is bound to the authenticated token (`ai:<name>`), never to
+          // a client-supplied id, so an agent cannot impersonate another's
+          // presence or forge the event actor. Display fields (name/status/
+          // details) are caller-controlled; identity is not.
+          const selfId = `ai:${entry.name}`
           if (urlPath === `/api/agent/${slug}/presence` && req.method === 'POST') {
             const b = await readJsonBody(req)
-            const id =
-              (typeof b.id === 'string' && b.id.trim()) ||
-              (typeof b.agentId === 'string' && b.agentId.trim()) ||
-              `ai:${entry.name}`
             const at = new Date().toISOString()
             const ent = presence.upsert({
-              id,
+              id: selfId,
               name: typeof b.name === 'string' ? b.name : entry.name,
               color: typeof b.color === 'string' ? b.color : undefined,
               avatar: typeof b.avatar === 'string' ? b.avatar : undefined,
@@ -329,28 +330,21 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
                     : '',
               at,
             })
-            eventLog.add('agent.presence', { ...ent }, id)
+            eventLog.add('agent.presence', { ...ent }, selfId)
             sendJson(res, 200, { success: true, slug, presence: presence.list() })
             return
           }
+          // Disconnect removes only this token's own presence; the event actor is
+          // the authenticated identity. No cross-agent disconnect.
           if (urlPath === `/api/agent/${slug}/presence/disconnect` && req.method === 'POST') {
             const b = await readJsonBody(req)
-            const id =
-              (typeof b.agentId === 'string' && b.agentId.trim()) ||
-              (typeof b.id === 'string' && b.id.trim()) ||
-              ''
-            if (!id) {
-              sendJson(res, 400, { error: 'disconnect needs { agentId }' })
-              return
-            }
-            const removed = presence.remove(id)
-            const by = typeof b.by === 'string' && b.by.trim() ? b.by.trim() : `ai:${entry.name}`
+            const removed = presence.remove(selfId)
             eventLog.add(
               'agent.disconnected',
-              { id, status: 'disconnected', details: typeof b.details === 'string' ? b.details : '', at: new Date().toISOString() },
-              by,
+              { id: selfId, status: 'disconnected', details: typeof b.details === 'string' ? b.details : '', at: new Date().toISOString() },
+              selfId,
             )
-            sendJson(res, 200, { success: true, slug, agentId: id, disconnected: true, removed })
+            sendJson(res, 200, { success: true, slug, agentId: selfId, disconnected: true, removed })
             return
           }
           // Events: poll for activity newer than `after` (the previous cursor),
@@ -376,8 +370,9 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
               sendJson(res, 400, { error: 'ack needs { upToId }' })
               return
             }
-            const by = typeof b.by === 'string' && b.by.trim() ? b.by.trim() : `ai:${entry.name}`
-            sendJson(res, 200, { success: true, acked: eventLog.ack(Math.trunc(upToId), by) })
+            // The ack actor is the authenticated identity, not a client-supplied
+            // label, so the audit trail cannot be forged.
+            sendJson(res, 200, { success: true, acked: eventLog.ack(Math.trunc(upToId), selfId) })
             return
           }
           sendJson(res, 404, { error: 'unknown agent endpoint' })

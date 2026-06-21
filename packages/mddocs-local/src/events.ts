@@ -83,10 +83,19 @@ export interface PresenceRegistry {
   list(): PresenceEntry[]
 }
 
+// Bound the registry so a misbehaving client cannot grow it without limit. With
+// ids bound to the issuing token (see share.ts) this is already naturally small;
+// the cap is defense in depth - on overflow the oldest entry is evicted.
+const MAX_PRESENCE = 64
+
 export function createPresenceRegistry(): PresenceRegistry {
   const byId = new Map<string, PresenceEntry>()
   return {
     upsert(entry) {
+      if (!byId.has(entry.id) && byId.size >= MAX_PRESENCE) {
+        const oldest = byId.keys().next().value
+        if (oldest !== undefined) byId.delete(oldest)
+      }
       byId.set(entry.id, entry)
       return entry
     },

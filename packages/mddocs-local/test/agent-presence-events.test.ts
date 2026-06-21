@@ -65,37 +65,48 @@ describe('agent presence + events', () => {
   it('registers and disconnects agent presence, and reflects it in state', async () => {
     const p = join(dir, 'doc.md')
     await writeFile(p, '# Spec\n\nThe latency is acceptable.\n')
-    const h = await serveShare(p, { autocommit: false, distDir: dist, storeDebounceMs: 60 })
+    // Identity is bound to the agent token, so name the agent 'reviewer'.
+    const h = await serveShare(p, {
+      autocommit: false,
+      distDir: dist,
+      storeDebounceMs: 60,
+      agents: [{ name: 'reviewer' }],
+    })
     const headers = { 'content-type': 'application/json', 'x-share-token': h.agentToken }
 
+    // A client-supplied id is ignored; the registered id is the token's ai:<name>.
     const reg = await fetch(`${base(h)}/api/agent/${h.slug}/presence`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ id: 'ai:reviewer', name: 'reviewer', status: 'reviewing', details: 'reading the spec' }),
+      body: JSON.stringify({ id: 'ai:impostor', status: 'reviewing', details: 'reading the spec' }),
     })
     expect(reg.status).toBe(200)
     const regBody = await reg.json()
     expect(regBody.success).toBe(true)
     expect(Array.isArray(regBody.presence)).toBe(true)
     expect(regBody.presence.some((e: { id: string }) => e.id === 'ai:reviewer')).toBe(true)
+    // The spoofed id must not appear.
+    expect(regBody.presence.some((e: { id: string }) => e.id === 'ai:impostor')).toBe(false)
 
     // State exposes who is present.
     const st = await fetch(`${base(h)}/api/agent/${h.slug}/state`, { headers })
     const stBody = await st.json()
     expect(stBody.presence.some((e: { id: string; status: string }) => e.id === 'ai:reviewer' && e.status === 'reviewing')).toBe(true)
 
-    // A presence registration emits a pollable event.
+    // A presence registration emits a pollable event attributed to the token.
     const { events } = await pollEvents(h, headers)
     expect(events.some((e) => e.type === 'agent.presence' && e.actor === 'ai:reviewer')).toBe(true)
 
+    // Disconnect removes the caller's own presence (no client-supplied id needed).
     const dis = await fetch(`${base(h)}/api/agent/${h.slug}/presence/disconnect`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ agentId: 'ai:reviewer' }),
+      body: JSON.stringify({}),
     })
     expect(dis.status).toBe(200)
     const disBody = await dis.json()
     expect(disBody.disconnected).toBe(true)
+    expect(disBody.agentId).toBe('ai:reviewer')
 
     const st2 = await fetch(`${base(h)}/api/agent/${h.slug}/state`, { headers })
     const stBody2 = await st2.json()
@@ -160,18 +171,19 @@ describe('agent presence + events', () => {
     const tail = await pollEvents(h, headers, all.cursor)
     expect(tail.events.length).toBe(0)
 
-    // Ack up to the cursor marks events acknowledged.
+    // Ack up to the cursor marks events acknowledged. A client-supplied `by` is
+    // ignored; the ack actor is the authenticated token (default name 'agent').
     const ack = await fetch(`${base(h)}/api/agent/${h.slug}/events/ack`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ upToId: all.cursor, by: 'ai:tester' }),
+      body: JSON.stringify({ upToId: all.cursor, by: 'ai:impostor' }),
     })
     expect(ack.status).toBe(200)
     const ackBody = await ack.json()
     expect(ackBody.acked).toBeGreaterThan(0)
 
     const after = await pollEvents(h, headers)
-    expect(after.events.every((e) => e.id > all.cursor || (e.ackedAt && e.ackedBy === 'ai:tester'))).toBe(true)
+    expect(after.events.every((e) => e.id > all.cursor || (e.ackedAt && e.ackedBy === 'ai:agent'))).toBe(true)
 
     provider.destroy()
     socket.destroy()
