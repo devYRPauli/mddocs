@@ -21,9 +21,9 @@ npm install -g @devyrpauli/mddocs
 mddocs --help
 ```
 
-Note: `mddocs` is a working title; the npm package is published under the
-`@devyrpauli` scope while the name is settled, and the command is `mddocs`. You
-can also run from source (see [Install from source](#install-from-source)).
+The npm package is published under the `@devyrpauli` scope; the command it
+installs is `mddocs`. You can also run from source (see
+[Install from source](#install-from-source)).
 
 ## Why
 
@@ -76,7 +76,8 @@ npm run build      # builds the browser editor bundle into dist/ (needed for ope
 `npm run build` only needs to be re-run if you change the editor or `@proof/*`
 sources. The CLI itself runs straight from source via `tsx`.
 
-Until the package is published, run the CLI through `tsx`:
+To run the CLI from a source checkout without installing it globally, go
+through `tsx`:
 
 ```bash
 alias mddocs='npx tsx "$(pwd)/packages/mddocs-cli/src/bin.ts"'
@@ -319,8 +320,6 @@ browser-interactive path is verified manually.
 
 Contributions welcome. Next on the list:
 
-- Publish under a real, unscoped npm project name (currently the `@devyrpauli`
-  scope while the name is settled).
 - Upstream the `@proof/core` TS2308 fix
   ([proof-sdk#57](https://github.com/EveryInc/proof-sdk/pull/57)) and drop the
   local fork patch once merged.
