@@ -55,7 +55,8 @@ describe('id-only commands resolve their file via the mark index', () => {
     const doc = await loadDoc(p)
     expect(doc.content).toContain('the latency')
     expect(doc.content).not.toContain('teh latency')
-    expect(doc.marks[id]).toBeUndefined()
+    const m = doc.marks[id] as unknown as { data?: { status?: string } } | undefined
+    expect(m?.data?.status).toBe('accepted')
   })
 
   it('errors clearly when the id is nowhere to be found', async () => {

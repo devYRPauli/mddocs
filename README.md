@@ -261,8 +261,9 @@ Notes. Id-only commands (`reply`, `resolve`, `accept`, `reject`) find their
 document automatically by scanning the managed `.md` files for the mark; pass
 `--file <path>` to skip the scan or disambiguate. `accept` applies the suggested
 change to the prose (replace, insert, or delete, anchored by the suggestion's
-quote) and consumes the suggestion; `reject` records the decision on the mark and
-leaves the prose unchanged.
+quote) and keeps the suggestion as an accepted record, preserving who proposed it
+(`by`); `reject` records the decision on the mark and leaves the prose unchanged.
+Both decisions stay in the file as provenance.
 
 ## Architecture
 

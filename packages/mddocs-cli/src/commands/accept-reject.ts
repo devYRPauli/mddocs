@@ -7,8 +7,10 @@ import { toArray, toRecord } from '../util/marks'
 const SUGGESTION_KINDS = ['insert', 'delete', 'replace']
 
 export function registerAcceptReject(program: Command): void {
-  // accept applies the suggested prose change to the body and consumes the
-  // suggestion mark (it is now part of the text).
+  // accept applies the suggested prose change to the body and keeps the mark as
+  // an accepted record (status: accepted), preserving the original proposer's
+  // `by` so the file retains who proposed the now-applied edit - symmetric with
+  // reject, which keeps the mark as a rejected record.
   program.command('accept <id>')
     .option('--file <f>')
     .action(async (id: string, o: { file?: string }) => {
@@ -20,8 +22,8 @@ export function registerAcceptReject(program: Command): void {
         throw new Error(`no suggestion with id ${id} in ${file}`)
       }
       const content = applySuggestion(doc.content, mark)
-      const { [id]: _applied, ...rest } = doc.marks
-      await saveDoc(file, content, rest)
+      const next = proof.acceptSuggestion(toArray(doc.marks), id)
+      await saveDoc(file, content, toRecord(next))
       console.log(`accepted ${id} (applied to ${file})`)
     })
 

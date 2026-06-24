@@ -32,19 +32,23 @@ describe('suggest + accept/reject', () => {
     expect(m.data?.status).toBe('pending')
   })
 
-  it('accept applies a replace to the prose and consumes the suggestion', async () => {
+  it('accept applies a replace and keeps the proposer as an accepted record', async () => {
     const p = join(dir, 'd.md')
     await writeFile(p, '# Doc\n\nold phrase here.')
     await run('suggest', p, '--quote', 'old phrase', '--replace', 'new phrase')
     const id = Object.keys((await loadDoc(p)).marks)[0]
+    const proposer = (await loadDoc(p)).marks[id]?.by
     await run('accept', id, '--file', p)
     const doc = await loadDoc(p)
     expect(doc.content).toContain('new phrase here.')
     expect(doc.content).not.toContain('old phrase')
-    expect(doc.marks[id]).toBeUndefined()
+    const m = doc.marks[id] as unknown as { by?: string; data?: { status?: string } } | undefined
+    expect(m).toBeDefined()
+    expect(m?.data?.status).toBe('accepted')
+    expect(m?.by).toBe(proposer)
   })
 
-  it('accept applies a delete to the prose', async () => {
+  it('accept applies a delete and keeps the suggestion as accepted', async () => {
     const p = join(dir, 'd.md')
     await writeFile(p, '# Doc\n\nplease remove me now.')
     await run('suggest', p, '--quote', 'remove me ', '--delete')
@@ -52,10 +56,11 @@ describe('suggest + accept/reject', () => {
     await run('accept', id, '--file', p)
     const doc = await loadDoc(p)
     expect(doc.content).not.toContain('remove me')
-    expect(doc.marks[id]).toBeUndefined()
+    const m = doc.marks[id] as unknown as { data?: { status?: string } } | undefined
+    expect(m?.data?.status).toBe('accepted')
   })
 
-  it('accept applies an insert after the quoted anchor', async () => {
+  it('accept applies an insert and keeps the suggestion as accepted', async () => {
     const p = join(dir, 'd.md')
     await writeFile(p, '# Doc\n\nthe fox jumps.')
     await run('suggest', p, '--quote', 'fox', '--insert', ' (red)')
@@ -63,7 +68,8 @@ describe('suggest + accept/reject', () => {
     await run('accept', id, '--file', p)
     const doc = await loadDoc(p)
     expect(doc.content).toContain('the fox (red) jumps.')
-    expect(doc.marks[id]).toBeUndefined()
+    const m = doc.marks[id] as unknown as { data?: { status?: string } } | undefined
+    expect(m?.data?.status).toBe('accepted')
   })
 
   it('reject sets the suggestion status to rejected', async () => {
