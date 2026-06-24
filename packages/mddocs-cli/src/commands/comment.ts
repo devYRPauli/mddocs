@@ -1,8 +1,10 @@
 import type { Command } from 'commander'
+import { basename } from 'node:path'
 import { loadDoc, saveDoc, proof } from 'mddocs-local'
 import type { StoredMark } from 'mddocs-local'
 import { actor, fileForId } from '../util/resolve-file'
 import { toArray, toRecord } from '../util/marks'
+import { autoCommit } from '../util/commit'
 
 export function registerComment(program: Command): void {
   const cmd = program.command('comment').description('manage comments')
@@ -10,11 +12,13 @@ export function registerComment(program: Command): void {
   cmd.command('add <file>')
     .requiredOption('--quote <q>')
     .requiredOption('--text <t>')
-    .action(async (file: string, o: { quote: string; text: string }) => {
+    .option('--no-commit', 'do not auto-commit the change to git')
+    .action(async (file: string, o: { quote: string; text: string; commit?: boolean }) => {
       const doc = await loadDoc(file)
       const mark = proof.createComment(o.quote, actor(), o.text, undefined, undefined)
       doc.marks[mark.id] = mark as unknown as StoredMark
       await saveDoc(file, doc.content, doc.marks)
+      await autoCommit(file, `mddocs: comment by ${actor()} on ${basename(file)}`, o)
       console.log(`added comment ${mark.id}`)
     })
 
@@ -38,7 +42,8 @@ export function registerComment(program: Command): void {
   cmd.command('reply <id>')
     .requiredOption('--text <t>')
     .option('--file <f>')
-    .action(async (id: string, o: { text: string; file?: string }) => {
+    .option('--no-commit', 'do not auto-commit the change to git')
+    .action(async (id: string, o: { text: string; file?: string; commit?: boolean }) => {
       const file = await fileForId(id, o)
       const doc = await loadDoc(file)
       const mark = doc.marks[id] as unknown as
@@ -51,16 +56,19 @@ export function registerComment(program: Command): void {
         { by: actor(), at: new Date().toISOString(), text: o.text },
       ]
       await saveDoc(file, doc.content, doc.marks)
+      await autoCommit(file, `mddocs: reply by ${actor()} on ${basename(file)}`, o)
       console.log(`replied to ${id}`)
     })
 
   cmd.command('resolve <id>')
     .option('--file <f>')
-    .action(async (id: string, o: { file?: string }) => {
+    .option('--no-commit', 'do not auto-commit the change to git')
+    .action(async (id: string, o: { file?: string; commit?: boolean }) => {
       const file = await fileForId(id, o)
       const doc = await loadDoc(file)
       const next = proof.resolveComment(toArray(doc.marks), id)
       await saveDoc(file, doc.content, toRecord(next))
+      await autoCommit(file, `mddocs: resolve comment by ${actor()} in ${basename(file)}`, o)
       console.log(`resolved ${id}`)
     })
 }

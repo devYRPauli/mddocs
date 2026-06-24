@@ -1,7 +1,9 @@
 import type { Command } from 'commander'
+import { basename } from 'node:path'
 import { loadDoc, saveDoc, proof } from 'mddocs-local'
 import type { StoredMark } from 'mddocs-local'
 import { actor } from '../util/resolve-file'
+import { autoCommit } from '../util/commit'
 
 const SUGGESTION_KINDS = ['insert', 'delete', 'replace']
 
@@ -13,7 +15,8 @@ export function registerSuggest(program: Command): void {
     .option('--replace <c>', 'replace the quote with this text')
     .option('--insert <c>', 'insert this text at the quote')
     .option('--delete', 'suggest deleting the quote')
-    .action(async (file: string, o: { quote: string; replace?: string; insert?: string; delete?: boolean }) => {
+    .option('--no-commit', 'do not auto-commit the change to git')
+    .action(async (file: string, o: { quote: string; replace?: string; insert?: string; delete?: boolean; commit?: boolean }) => {
       const doc = await loadDoc(file)
       let mark
       if (o.replace !== undefined) {
@@ -27,6 +30,7 @@ export function registerSuggest(program: Command): void {
       }
       doc.marks[mark.id] = mark as unknown as StoredMark
       await saveDoc(file, doc.content, doc.marks)
+      await autoCommit(file, `mddocs: suggest (${mark.kind}) by ${actor()} on ${basename(file)}`, o)
       console.log(`added ${mark.kind} suggestion ${mark.id}`)
     })
 

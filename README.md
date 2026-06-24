@@ -277,6 +277,21 @@ quote) and keeps the suggestion as an accepted record, preserving who proposed i
 (`by`); `reject` records the decision on the mark and leaves the prose unchanged.
 Both decisions stay in the file as provenance.
 
+Auto-commit. In a git repo, the mutating commands (`comment add`/`reply`/`resolve`,
+`suggest add`, `accept`, `reject`) commit just the changed file with an action- and
+actor-attributed message, so `mddocs log` reflects terminal edits the way a live
+`serve` session already auto-commits, for example:
+
+```
+mddocs: comment by human:sam on notes.md
+mddocs: accept suggestion (proposed by ai:claude-opus-4-8) in notes.md
+```
+
+The git author stays whoever runs the command (you own the repo); the agent/human
+that originated the change is recorded in the message and in the mark's `by`. Pass
+`--no-commit` to leave the edit in the working tree, or run outside a git repo to
+skip committing entirely.
+
 ## Architecture
 
 ```
