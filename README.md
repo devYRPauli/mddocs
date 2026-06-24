@@ -219,7 +219,10 @@ to register named agents, each with its own token; `serve` then prints a token p
 agent. A request that omits `model` is attributed to the token's agent name
 (`ai:<name>`). Per-agent rate limits are available through the engine API
 (`serveShare({ agents: [{ name, rateLimit: { maxRequests, windowMs } }] })`),
-returning HTTP 429 when exceeded.
+returning HTTP 429 when exceeded. When a limit is configured, every agent API
+response carries `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and
+`X-RateLimit-Reset` (unix seconds), and a 429 adds `Retry-After`, so an agent can
+self-throttle instead of being surprised by the 429.
 
 ```bash
 # Read the live document:

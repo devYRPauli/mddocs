@@ -53,6 +53,44 @@ describe('per-agent tokens and rate limiting', () => {
     await h.stop()
   })
 
+  it('exposes X-RateLimit-* headers and Retry-After on 429', async () => {
+    const p = join(dir, 'doc.md')
+    await writeFile(p, '# Doc\n\nsome text.\n')
+    const h = await serveShare(p, {
+      autocommit: false, distDir: dist, storeDebounceMs: 60,
+      agents: [
+        { name: 'writer', rateLimit: { maxRequests: 2, windowMs: 5000 } },
+        { name: 'reviewer' },
+      ],
+    })
+    const base = baseOf(h.url)
+    const writer = h.agentTokens!.writer
+    const reviewer = h.agentTokens!.reviewer
+    const state = (tok: string) =>
+      fetch(`${base}/api/agent/${h.slug}/state`, { headers: { 'x-share-token': tok } })
+
+    const r1 = await state(writer) // 1 of 2
+    expect(r1.status).toBe(200)
+    expect(r1.headers.get('x-ratelimit-limit')).toBe('2')
+    expect(r1.headers.get('x-ratelimit-remaining')).toBe('1')
+    expect(r1.headers.get('x-ratelimit-reset')).toBeTruthy()
+
+    const r2 = await state(writer) // 2 of 2
+    expect(r2.headers.get('x-ratelimit-remaining')).toBe('0')
+
+    const r3 = await state(writer) // over the limit
+    expect(r3.status).toBe(429)
+    expect(r3.headers.get('x-ratelimit-remaining')).toBe('0')
+    expect(r3.headers.get('retry-after')).toBeTruthy()
+
+    // an agent with no configured limit gets no rate-limit headers
+    const ru = await state(reviewer)
+    expect(ru.status).toBe(200)
+    expect(ru.headers.get('x-ratelimit-limit')).toBeNull()
+
+    await h.stop()
+  })
+
   it("attributes a comment to the agent's name when the body omits model", async () => {
     const p = join(dir, 'doc.md')
     await writeFile(p, '# Doc\n\nThe latency is fine.\n')

@@ -154,6 +154,24 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
     return true
   }
 
+  // Standard X-RateLimit-* headers so agents can self-throttle instead of being
+  // surprised by a 429. Read the limiter's current state for this token without
+  // mutating it; no-op when the agent has no rate limit configured. Call after
+  // withinRateLimit so the counts reflect the request just recorded. On a 429 we
+  // also add Retry-After (seconds until the window frees a slot).
+  function applyRateHeaders(res: ServerResponse, entry: AgentEntry, limited = false): void {
+    if (!entry.rateLimit) return
+    const { maxRequests, windowMs } = entry.rateLimit
+    const now = Date.now()
+    const recent = (rateHits.get(entry.token) ?? []).filter((t) => now - t < windowMs)
+    const remaining = Math.max(0, maxRequests - recent.length)
+    const resetMs = recent.length > 0 ? recent[0] + windowMs : now
+    res.setHeader('X-RateLimit-Limit', String(maxRequests))
+    res.setHeader('X-RateLimit-Remaining', String(remaining))
+    res.setHeader('X-RateLimit-Reset', String(Math.ceil(resetMs / 1000)))
+    if (limited) res.setHeader('Retry-After', String(Math.max(1, Math.ceil((resetMs - now) / 1000))))
+  }
+
   // Server-side write enforcement: a viewer's WebSocket connection is readOnly,
   // so Hocuspocus drops its document updates even if a crafted client tries to
   // write. Commenters/editors keep write access (a comment is itself a write);
@@ -246,9 +264,13 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
             return
           }
           if (!withinRateLimit(entry)) {
+            applyRateHeaders(res, entry, true)
             sendJson(res, 429, { error: 'rate limit exceeded', agent: entry.name })
             return
           }
+          // Reflect the rate-limit state on every agent API response so callers
+          // can self-throttle before hitting the 429.
+          applyRateHeaders(res, entry)
           const modelFrom = (b: Record<string, unknown>) => (b.model as string | undefined) ?? entry.name
           if (urlPath === `/api/agent/${slug}/state` && req.method === 'GET') {
             sendJson(res, 200, { ...(await agent.getState()), presence: presence.list() })
