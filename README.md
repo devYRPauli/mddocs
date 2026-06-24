@@ -17,9 +17,9 @@ humans and other agents are doing, each bound to its own token identity
 
 ![The mddocs editor with an AI reviewer's comment in the document](examples/editor.png)
 
-The editor with an AI reviewer's mark live in the document: a comment flagging an
-unbacked claim ("the fastest on the market"). Open the comment to see the thread,
-attributed to `ai:claude-opus-4-8`:
+The editor with an AI reviewer's mark live in the document: a comment on the
+opening line asking for a version and release date. Open the comment to see the
+thread, attributed to `ai:claude-opus-4-8`:
 
 ![An AI agent's comment thread in mddocs, attributed to claude-opus-4-8](examples/editor-comment.png)
 
