@@ -15,11 +15,11 @@ or reject, rewrite prose, announce presence, and poll a live event stream of wha
 humans and other agents are doing, each bound to its own token identity
 (`ai:<model>`). That is collaboration, not just file access.
 
-![The mddocs editor with an AI reviewer's inline suggestion and comment](examples/editor.png)
+![The mddocs editor with an AI reviewer's comment in the document](examples/editor.png)
 
-The editor with an AI reviewer's marks live in the document: a suggested fix
-(`onbaording` -> `onboarding`) and a comment flagging an unbacked claim. Open the
-comment to see the thread, attributed to `ai:claude-opus-4-8`:
+The editor with an AI reviewer's mark live in the document: a comment flagging an
+unbacked claim ("the fastest on the market"). Open the comment to see the thread,
+attributed to `ai:claude-opus-4-8`:
 
 ![An AI agent's comment thread in mddocs, attributed to claude-opus-4-8](examples/editor-comment.png)
 
