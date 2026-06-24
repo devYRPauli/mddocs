@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,7 +14,7 @@ describe('suggest + accept/reject', () => {
   it('creates a pending replace suggestion', async () => {
     const p = join(dir, 'd.md')
     await writeFile(p, '# Doc\n\nold phrase here.')
-    await run('suggest', p, '--quote', 'old phrase', '--replace', 'new phrase')
+    await run('suggest', 'add', p, '--quote', 'old phrase', '--replace', 'new phrase')
     const doc = await loadDoc(p)
     const m = Object.values(doc.marks)[0] as unknown as { kind: string; data?: { status?: string; content?: string } }
     expect(m.kind).toBe('replace')
@@ -25,7 +25,7 @@ describe('suggest + accept/reject', () => {
   it('creates a delete suggestion via createDeleteSuggestion (no content field)', async () => {
     const p = join(dir, 'd.md')
     await writeFile(p, '# Doc\n\nremove me please.')
-    await run('suggest', p, '--quote', 'remove me', '--delete')
+    await run('suggest', 'add', p, '--quote', 'remove me', '--delete')
     const doc = await loadDoc(p)
     const m = Object.values(doc.marks)[0] as unknown as { kind: string; data?: { status?: string } }
     expect(m.kind).toBe('delete')
@@ -35,7 +35,7 @@ describe('suggest + accept/reject', () => {
   it('accept applies a replace and keeps the proposer as an accepted record', async () => {
     const p = join(dir, 'd.md')
     await writeFile(p, '# Doc\n\nold phrase here.')
-    await run('suggest', p, '--quote', 'old phrase', '--replace', 'new phrase')
+    await run('suggest', 'add', p, '--quote', 'old phrase', '--replace', 'new phrase')
     const id = Object.keys((await loadDoc(p)).marks)[0]
     const proposer = (await loadDoc(p)).marks[id]?.by
     await run('accept', id, '--file', p)
@@ -51,7 +51,7 @@ describe('suggest + accept/reject', () => {
   it('accept applies a delete and keeps the suggestion as accepted', async () => {
     const p = join(dir, 'd.md')
     await writeFile(p, '# Doc\n\nplease remove me now.')
-    await run('suggest', p, '--quote', 'remove me ', '--delete')
+    await run('suggest', 'add', p, '--quote', 'remove me ', '--delete')
     const id = Object.keys((await loadDoc(p)).marks)[0]
     await run('accept', id, '--file', p)
     const doc = await loadDoc(p)
@@ -63,7 +63,7 @@ describe('suggest + accept/reject', () => {
   it('accept applies an insert and keeps the suggestion as accepted', async () => {
     const p = join(dir, 'd.md')
     await writeFile(p, '# Doc\n\nthe fox jumps.')
-    await run('suggest', p, '--quote', 'fox', '--insert', ' (red)')
+    await run('suggest', 'add', p, '--quote', 'fox', '--insert', ' (red)')
     const id = Object.keys((await loadDoc(p)).marks)[0]
     await run('accept', id, '--file', p)
     const doc = await loadDoc(p)
@@ -75,11 +75,50 @@ describe('suggest + accept/reject', () => {
   it('reject sets the suggestion status to rejected', async () => {
     const p = join(dir, 'd.md')
     await writeFile(p, '# Doc\n\nold phrase here.')
-    await run('suggest', p, '--quote', 'old phrase', '--replace', 'new phrase')
+    await run('suggest', 'add', p, '--quote', 'old phrase', '--replace', 'new phrase')
     const id = Object.keys((await loadDoc(p)).marks)[0]
     await run('reject', id, '--file', p)
     const doc = await loadDoc(p)
     const m = doc.marks[id] as unknown as { data?: { status?: string } } | undefined
     expect(m === undefined || m.data?.status === 'rejected').toBe(true)
+  })
+
+  it('ls lists suggestions with their change, status, and proposer', async () => {
+    const p = join(dir, 'd.md')
+    await writeFile(p, '# Doc\n\nold phrase here. keep this please.')
+    await run('suggest', 'add', p, '--quote', 'old phrase', '--replace', 'new phrase')
+    await run('suggest', 'add', p, '--quote', 'keep this', '--delete')
+    const lines: string[] = []
+    const spy = vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => {
+      lines.push(a.join(' '))
+    })
+    try {
+      await run('suggest', 'ls', p)
+    } finally {
+      spy.mockRestore()
+    }
+    const out = lines.join('\n')
+    expect(out).toContain('replace "old phrase" -> "new phrase"')
+    expect(out).toContain('delete "keep this"')
+    expect(out).toContain('[pending]')
+    expect(out).toContain('(by human:')
+  })
+
+  it('ls --pending hides accepted suggestions', async () => {
+    const p = join(dir, 'd.md')
+    await writeFile(p, '# Doc\n\nold phrase here.')
+    await run('suggest', 'add', p, '--quote', 'old phrase', '--replace', 'new phrase')
+    const id = Object.keys((await loadDoc(p)).marks)[0]
+    await run('accept', id, '--file', p)
+    const lines: string[] = []
+    const spy = vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => {
+      lines.push(a.join(' '))
+    })
+    try {
+      await run('suggest', 'ls', p, '--pending')
+    } finally {
+      spy.mockRestore()
+    }
+    expect(lines.join('\n')).not.toContain(id)
   })
 })

@@ -125,7 +125,8 @@ mddocs serve notes.md          # prints role links and an agent API block; Ctrl-
 
 # Or collaborate straight from the terminal:
 mddocs comment add notes.md --quote "the API is fast" --text "cite a benchmark?"
-mddocs suggest      notes.md --quote "teh" --replace "the"
+mddocs suggest add  notes.md --quote "teh" --replace "the"
+mddocs suggest ls   notes.md          # list suggestions and their ids/status
 mddocs accept       <suggestion-id> --file notes.md
 
 # History is just git:
@@ -259,7 +260,8 @@ mddocs comment ls   <file> [--open|--resolved|--orphaned]
 mddocs comment reply <id> --text <t> [--file <f>]          reply in a comment thread
 mddocs comment resolve <id> [--file <f>]                   resolve a comment thread
 
-mddocs suggest <file> --quote <q> (--replace <c> | --insert <c> | --delete)
+mddocs suggest add <file> --quote <q> (--replace <c> | --insert <c> | --delete)
+mddocs suggest ls  <file> [--pending|--accepted|--rejected|--orphaned]
 mddocs accept  <id> [--file <f>]                            apply a suggestion to the prose
 mddocs reject  <id> [--file <f>]                            mark a suggestion rejected
 

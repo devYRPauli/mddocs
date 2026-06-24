@@ -49,7 +49,7 @@ describe('async multiplayer footer merge', () => {
 
     // Two collaborators act on the same file (async, no server).
     await run('comment', 'add', p, '--quote', 'The API is great.', '--text', 'cite a benchmark')
-    await run('suggest', p, '--quote', 'cli', '--replace', 'CLI')
+    await run('suggest', 'add', p, '--quote', 'cli', '--replace', 'CLI')
 
     let doc = await loadDoc(p)
     const kinds = Object.values(doc.marks).map((m) => (m as unknown as { kind: string }).kind).sort()

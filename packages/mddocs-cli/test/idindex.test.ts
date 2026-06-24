@@ -47,7 +47,7 @@ describe('id-only commands resolve their file via the mark index', () => {
     await mkdir(sub, { recursive: true })
     const p = join(sub, 'spec.md')
     await writeFile(p, '# Spec\n\nteh latency\n')
-    await run('suggest', p, '--quote', 'teh', '--replace', 'the')
+    await run('suggest', 'add', p, '--quote', 'teh', '--replace', 'the')
     const id = await onlyMarkId(p)
 
     await run('accept', id)
