@@ -1,12 +1,19 @@
 # mddocs
 
-Local-first, git-native collaboration for Markdown, with a CLI, real-time
-multiplayer, and an agent API.
+Real-time, git-native collaboration for Markdown: a CLI, multiplayer editing, and
+a structured agent API, all local-first with no hosted service.
 
-Think of it as "Google Docs for `.md` files" that lives in your repo: comments,
-suggestions, authorship/provenance, and full history, all stored inside the
-Markdown file and versioned by plain git. Humans and AI agents can edit the same
-document together, live. No hosted service.
+Think of it as "Google Docs for `.md` files" that lives in your repo. Humans and
+AI agents work the same document together, live, with comments, suggestions,
+presence, and authorship/provenance, all stored inside the Markdown file and
+versioned by plain git.
+
+Most "Markdown for agents" tools stop at letting an agent edit a file on disk.
+mddocs goes further: agents are first-class collaborators over a structured HTTP
+API. They read document state, post comments and suggestions a human can accept
+or reject, rewrite prose, announce presence, and poll a live event stream of what
+humans and other agents are doing, each bound to its own token identity
+(`ai:<model>`). That is collaboration, not just file access.
 
 `mddocs` is a thin, self-hostable layer built on the MIT-licensed
 [`proof-sdk`](https://github.com/EveryInc/proof-sdk). It reuses Proof's marks
