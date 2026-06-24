@@ -15,6 +15,16 @@ or reject, rewrite prose, announce presence, and poll a live event stream of wha
 humans and other agents are doing, each bound to its own token identity
 (`ai:<model>`). That is collaboration, not just file access.
 
+![The mddocs editor with an AI reviewer's inline suggestion and comment](examples/editor.png)
+
+The editor with an AI reviewer's marks live in the document: a suggested fix
+(`onbaording` -> `onboarding`) and a comment flagging an unbacked claim. Open the
+comment to see the thread, attributed to `ai:claude-opus-4-8`:
+
+![An AI agent's comment thread in mddocs, attributed to claude-opus-4-8](examples/editor-comment.png)
+
+Prefer the terminal? The same human-plus-agent review, end to end:
+
 ![mddocs demo: an AI reviewer agent and a human working the same Markdown file from the terminal](examples/demo.gif)
 
 Above: a human and an AI reviewer agent on the same `notes.md`. The agent reads
