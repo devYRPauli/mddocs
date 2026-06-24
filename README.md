@@ -15,6 +15,14 @@ or reject, rewrite prose, announce presence, and poll a live event stream of wha
 humans and other agents are doing, each bound to its own token identity
 (`ai:<model>`). That is collaboration, not just file access.
 
+![mddocs demo: an AI reviewer agent and a human working the same Markdown file from the terminal](examples/demo.gif)
+
+Above: a human and an AI reviewer agent on the same `notes.md`. The agent reads
+the live document, leaves a comment, and proposes a fix over the agent API; the
+human accepts it from the CLI; and every change is an ordinary git commit with
+authorship recorded in the file. Reproduce it with
+[`examples/demo.tape`](examples/demo.tape) (`vhs examples/demo.tape`).
+
 `mddocs` is a thin, self-hostable layer built on the MIT-licensed
 [`proof-sdk`](https://github.com/EveryInc/proof-sdk). It reuses Proof's marks
 model and browser editor, and adds a local-first, git-backed workflow, a
