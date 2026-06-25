@@ -23,6 +23,8 @@ export interface EventLog {
   /** Mark every unacked event with id <= upToId as acknowledged; returns the count. */
   ack(upToId: number, by: string): number
   size(): number
+  /** Receive every event added after this call. Returns an unsubscribe fn. */
+  subscribe(fn: (e: DocEvent) => void): () => void
 }
 
 // Keep the in-memory log bounded so a long-lived session does not grow without
@@ -32,11 +34,16 @@ const MAX_EVENTS = 2000
 export function createEventLog(): EventLog {
   let nextId = 1
   const events: DocEvent[] = []
+  const subscribers = new Set<(e: DocEvent) => void>()
   return {
     add(type, data, actor) {
       const event: DocEvent = { id: nextId++, type, data, actor, createdAt: new Date().toISOString() }
       events.push(event)
       if (events.length > MAX_EVENTS) events.splice(0, events.length - MAX_EVENTS)
+      for (const fn of subscribers) {
+        // A dead/throwing subscriber must not break add() or sibling subscribers.
+        try { fn(event) } catch { /* ignore */ }
+      }
       return event
     },
     list(after, limit) {
@@ -63,6 +70,10 @@ export function createEventLog(): EventLog {
     },
     size() {
       return events.length
+    },
+    subscribe(fn) {
+      subscribers.add(fn)
+      return () => { subscribers.delete(fn) }
     },
   }
 }
