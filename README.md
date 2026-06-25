@@ -249,7 +249,9 @@ curl -N -H "x-share-token: $TOKEN" \
 ```
 
 See [`examples/agent-reviewer.mjs`](examples/agent-reviewer.mjs) for a runnable
-reviewer agent and a human-plus-agent walkthrough.
+reviewer agent and a human-plus-agent walkthrough, and
+[`examples/agent-watcher.mjs`](examples/agent-watcher.mjs) for a runnable SSE
+consumer that prints document events live (with `?after`/`Last-Event-ID` replay).
 
 ## Resolving merge conflicts: `mddocs resolve`
 

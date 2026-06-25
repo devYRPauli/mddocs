@@ -33,3 +33,32 @@ real time and are saved to the file + git, attributed to `ai:<model>`.
 
 Everything the agent did is now in `notes.md` (in the `<!-- PROOF -->` footer)
 and committed to git - fully local, no hosted service.
+
+## `agent-watcher.mjs` - react to changes in real time (SSE)
+
+The push counterpart to the reviewer. Instead of polling, it subscribes to the
+document's event stream over Server-Sent Events and prints every change - human
+edits in the browser AND other agents' mutations - the instant it happens.
+
+### Run it
+
+1. Start a live session as above (`serve` prints the **agent API** base + token).
+
+2. In another terminal, watch the stream:
+
+   ```bash
+   node examples/agent-watcher.mjs http://127.0.0.1:<port>/api/agent/notes.md <agent-token>
+   ```
+
+3. Edit the doc in the browser, or run `agent-reviewer.mjs` in a third terminal.
+   Each change prints live, e.g.:
+
+   ```
+   #2  mark.added       by ai:claude-opus-4-8   comment m17824...
+   #3  document.changed by unknown              169 chars
+   ```
+
+Pass `--after <id>` to replay events newer than `<id>` from the in-memory backlog
+before streaming live (`--after 0` replays everything still buffered). The watcher
+reconnects automatically if the connection drops, resuming from the last event id
+it saw (via the standard `Last-Event-ID` header) so no buffered event is missed.
