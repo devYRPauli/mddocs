@@ -6,7 +6,7 @@ import { dirname, join, normalize, resolve } from 'node:path'
 import { WebSocketServer } from 'ws'
 import { configureCollab, type CollabServerOptions } from './collab'
 import { createAgentApi } from './agent'
-import { createEventLog, createPresenceRegistry, observeDocForEvents } from './events'
+import { createEventLog, createPresenceRegistry, observeDocForEvents, type DocEvent } from './events'
 import { loadDoc } from './doc'
 
 export interface AgentRateLimit {
@@ -63,6 +63,9 @@ const CAPABILITIES: Record<ShareRole, ShareCapabilities> = {
 }
 
 const DEFAULT_DIST = process.env.MDDOCS_DIST ?? resolve(dirname(fileURLToPath(import.meta.url)), '../../../dist')
+
+// Matches EventLog MAX_EVENTS: the most backlog we replay on stream (re)connect.
+const STREAM_REPLAY_LIMIT = 2000
 
 const CONTENT_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -367,6 +370,45 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
               selfId,
             )
             sendJson(res, 200, { success: true, slug, agentId: selfId, disconnected: true, removed })
+            return
+          }
+          // Events (push): stream events over SSE instead of polling. Honors
+          // `?after=<id>` or the standard Last-Event-ID header to replay the
+          // in-memory backlog on (re)connect, then pushes live events as they
+          // are logged. Coexists with events/pending. The auth + rate-limit gate
+          // above already ran (bad token never reaches here; X-RateLimit-* are
+          // set and merged into writeHead), and opening a stream is one request.
+          if (urlPath === `/api/agent/${slug}/events/stream` && req.method === 'GET') {
+            const q = (req.url ?? '').split('?')[1]
+            const params = new URLSearchParams(q ?? '')
+            const lastEventId = req.headers['last-event-id']
+            const afterRaw = params.get('after') ?? (typeof lastEventId === 'string' ? lastEventId : '')
+            let lastSent = Math.max(0, Number.parseInt(afterRaw, 10) || 0)
+
+            res.writeHead(200, {
+              'content-type': 'text/event-stream; charset=utf-8',
+              'cache-control': 'no-cache, no-transform',
+              connection: 'keep-alive',
+              'x-accel-buffering': 'no',
+            })
+
+            const send = (e: DocEvent): void => {
+              if (e.id <= lastSent) return
+              lastSent = e.id
+              res.write(`id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`)
+            }
+            // Subscribe first, then drain the backlog synchronously: with no await
+            // between the two, no live event can interleave, and the id<=lastSent
+            // guard dedups any overlap.
+            const unsubscribe = eventLog.subscribe(send)
+            for (const e of eventLog.list(lastSent, STREAM_REPLAY_LIMIT)) send(e)
+
+            const heartbeat = setInterval(() => res.write(': ping\n\n'), 20000)
+            const cleanup = (): void => {
+              clearInterval(heartbeat)
+              unsubscribe()
+            }
+            res.on('close', cleanup)
             return
           }
           // Events: poll for activity newer than `after` (the previous cursor),
