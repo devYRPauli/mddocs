@@ -148,4 +148,20 @@ describe('agent events SSE stream', () => {
 
     await h.stop()
   }, 20000)
+
+  it('carries X-RateLimit-* headers on the SSE response when the agent is rate limited', async () => {
+    const p = join(dir, 'doc.md')
+    await writeFile(p, '# Spec\n\nbody.\n')
+    const h = await serveShare(p, {
+      autocommit: false, distDir: dist, storeDebounceMs: 60,
+      agents: [{ name: 'writer', rateLimit: { maxRequests: 5, windowMs: 5000 } }],
+    })
+    const s = await openStream(h, h.agentToken)
+    expect(s.res.statusCode).toBe(200)
+    expect(s.res.headers['x-ratelimit-limit']).toBe('5')
+    expect(s.res.headers).toHaveProperty('x-ratelimit-remaining')
+    expect(s.res.headers).toHaveProperty('x-ratelimit-reset')
+    s.req.destroy()
+    await h.stop()
+  }, 20000)
 })

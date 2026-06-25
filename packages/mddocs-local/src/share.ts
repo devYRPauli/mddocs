@@ -391,6 +391,10 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
               connection: 'keep-alive',
               'x-accel-buffering': 'no',
             })
+            // Flush headers now so the client sees 200 immediately rather than
+            // waiting for the first body write (the next heartbeat, up to 20s
+            // later) on a quiet stream.
+            res.flushHeaders()
 
             const send = (e: DocEvent): void => {
               if (e.id <= lastSent) return
@@ -487,6 +491,7 @@ export async function serveShare(file: string, opts: ShareServeOptions = {}): Pr
       await hocuspocus.destroy()
       await session.stop()
       wss.close()
+      server.closeAllConnections()
       await new Promise<void>((r) => server.close(() => r()))
     },
   }
