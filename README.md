@@ -179,6 +179,7 @@ POST /api/agent/:slug/rewrite  { markdown, quote?, model? }              -> { ch
 POST /api/agent/:slug/presence { name?, status?, details? }              -> { presence }
 POST /api/agent/:slug/presence/disconnect                               -> { disconnected }
 GET  /api/agent/:slug/events/pending?after=<id>&limit=<n>                -> { events, cursor }
+GET  /api/agent/:slug/events/stream?after=<id>  (SSE)                    -> text/event-stream
 POST /api/agent/:slug/events/ack { upToId }                             -> { acked }
 ```
 
@@ -214,6 +215,15 @@ you saw; each event carries a monotonic `id` and an `actor` (`ai:<model>`,
 `human:<name>`, or `unknown`). Call `events/ack` with `upToId` once you have
 handled them. Events are kept in memory for the life of the `serve` session.
 
+For push instead of poll, `events/stream` delivers the same events over
+Server-Sent Events. Each frame is `id: <n>`, `event: <type>`, `data: <event JSON>`
+(the same shape `events/pending` returns), so a client reacts the instant a human
+comments or another agent edits. On (re)connect it replays the in-memory backlog
+from `?after=<id>` or the standard `Last-Event-ID` header, then streams live; a
+20-second heartbeat comment keeps the connection alive. It does not ack: track
+the last `id` you saw and reconnect with it. `events/pending` remains the simple
+poll alternative for clients that cannot hold a connection.
+
 By default `serve` issues one shared agent token. Pass `--agent <name>` (repeatable)
 to register named agents, each with its own token; `serve` then prints a token per
 agent. A request that omits `model` is attributed to the token's agent name
@@ -232,6 +242,10 @@ curl -H "x-share-token: $TOKEN" http://127.0.0.1:<port>/api/agent/notes.md/state
 curl -X POST -H "x-share-token: $TOKEN" -H 'content-type: application/json' \
   -d '{"quote":"The latency is acceptable.","text":"Quantify, p50 or p99?","model":"claude-opus-4-8"}' \
   http://127.0.0.1:<port>/api/agent/notes.md/comment
+
+# Stream events live (SSE):
+curl -N -H "x-share-token: $TOKEN" \
+  http://127.0.0.1:<port>/api/agent/notes.md/events/stream
 ```
 
 See [`examples/agent-reviewer.mjs`](examples/agent-reviewer.mjs) for a runnable
