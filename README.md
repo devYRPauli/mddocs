@@ -77,6 +77,7 @@ server. `mddocs` takes a different approach:
 | Role-based share links (editor / commenter / viewer) | `serve` prints a link per role; roles enforced server-side (viewers read-only, commenters cannot edit prose) |
 | Agent HTTP API | AI tools read state, post comments/suggestions, rewrite prose, announce presence, and poll document events live, attributed to `ai:<model>` |
 | Comments and suggestions from the terminal | `mddocs comment ...`, `mddocs suggest ...`, `mddocs accept`/`reject` |
+| Repo-wide review inbox | `mddocs status` lists every open comment and pending suggestion across all managed docs (`--all` includes resolved/accepted/rejected) |
 | History and diff | `mddocs log <file>`, `mddocs diff <file> [rev]` (plain git underneath) |
 | Async multiplayer and conflict resolution | edit on branches; `mddocs resolve <file>` unions a conflicted PROOF footer |
 | Authorship and provenance | every mark records `by` (`human:<user>` or `ai:<model>`) and `at` |
@@ -128,6 +129,9 @@ mddocs comment add notes.md --quote "the API is fast" --text "cite a benchmark?"
 mddocs suggest add  notes.md --quote "teh" --replace "the"
 mddocs suggest ls   notes.md          # list suggestions and their ids/status
 mddocs accept       <suggestion-id> --file notes.md
+
+# See everything that needs attention across every managed doc:
+mddocs status                         # open comments + pending suggestions (--all for the rest)
 
 # History is just git:
 mddocs log  notes.md
