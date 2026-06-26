@@ -7,10 +7,14 @@ import { registerOpen } from './commands/open'
 import { registerServe } from './commands/serve'
 import { registerResolve } from './commands/resolve'
 import { registerInit } from './commands/init'
+import { registerStatus } from './commands/status'
 
 export function buildProgram(): Command {
   const program = new Command()
-  program.name('mddocs').description('Local-first git-native markdown collaboration')
+  program
+    .name('mddocs')
+    .description('Local-first git-native markdown collaboration')
+    .version(process.env.MDDOCS_VERSION ?? '0.0.0-dev', '-v, --version')
   registerOpen(program)
   registerServe(program)
   registerComment(program)
@@ -19,5 +23,6 @@ export function buildProgram(): Command {
   registerHistory(program)
   registerResolve(program)
   registerInit(program)
+  registerStatus(program)
   return program
 }
