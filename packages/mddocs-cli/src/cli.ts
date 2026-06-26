@@ -10,7 +10,10 @@ import { registerInit } from './commands/init'
 
 export function buildProgram(): Command {
   const program = new Command()
-  program.name('mddocs').description('Local-first git-native markdown collaboration')
+  program
+    .name('mddocs')
+    .description('Local-first git-native markdown collaboration')
+    .version(process.env.MDDOCS_VERSION ?? '0.0.0-dev', '-v, --version')
   registerOpen(program)
   registerServe(program)
   registerComment(program)
